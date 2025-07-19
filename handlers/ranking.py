@@ -29,7 +29,7 @@ async def cmd_ranking(update: Update, context):
     
     msg = "🎬 **TOP 10 CINÉFILOS ACTUALES**\n\n"
     
-    for i, (user, pts) in enumerate(top, 1):
+    for i, (user, pts, level) in enumerate(top, 1):
         if i == 1:
             msg += f"🥇 {user} - {pts} pts\n"
         elif i == 2:
@@ -45,12 +45,13 @@ async def cmd_ranking(update: Update, context):
 async def ranking_job(context):
     """Job que se ejecuta automáticamente cada domingo a las 20:00"""
     try:
-        print("[DEBUG] Ejecutando ranking_job semanal")
+        print("[INFO] Ejecutando ranking_job semanal")
         
-        # Obtener chat_id desde job_data o usar un grupo predeterminado
-        chat_id = context.job.data if context.job.data else None
+        # Obtener chat_id desde job_data
+        chat_id = context.job.data if hasattr(context.job, 'data') and context.job.data else None
+        
         if not chat_id:
-            print("[WARNING] No hay chat_id configurado para ranking automático")
+            print("[ERROR] No hay chat_id configurado para ranking automático")
             return
         
         top = get_top10()
@@ -76,7 +77,7 @@ async def ranking_job(context):
         msg += f"{winner_phrase}\n\n"
         msg += "🏆 **TOP 10 DE LA SEMANA:**\n\n"
         
-        for i, (user, pts) in enumerate(top, 1):
+        for i, (user, pts, level) in enumerate(top, 1):
             if i == 1:
                 msg += f"🥇 {user} - {pts} pts\n"
             elif i == 2:
@@ -89,6 +90,7 @@ async def ranking_job(context):
         msg += f"\n{random.choice(CLOSING_PHRASES)}"
         
         await context.bot.send_message(chat_id=chat_id, text=msg)
+        print(f"[INFO] Ranking semanal enviado a chat {chat_id}")
         
         # Opcional: Reset de puntos semanales (descomentar si quieres ranking semanal real)
         # reset_weekly_points()
@@ -118,6 +120,6 @@ def reset_weekly_points():
     try:
         cur.execute("UPDATE users SET points = 0")
         conn.commit()
-        print("[DEBUG] Puntos semanales reiniciados")
+        print("[INFO] Puntos semanales reiniciados")
     except Exception as e:
         print(f"[ERROR] al reiniciar puntos: {e}")
