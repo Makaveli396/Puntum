@@ -1,5 +1,7 @@
 # phrases.py (nuevo sistema de frases cinéfilas por categoría)
 import random
+from telegram import Update
+from telegram.ext import ContextTypes
 
 # Historial simple para evitar repeticiones por usuario
 last_reaction_by_user = {}
@@ -53,3 +55,24 @@ def get_random_reaction(hashtag: str, user_id: int) -> str:
     elegida = random.choice(opciones)
     last_reaction_by_user[user_id] = elegida
     return elegida
+
+# Middleware function for handling phrase reactions
+async def phrase_middleware(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Middleware that detects hashtags in messages and responds with cinematic phrases
+    """
+    if not update.message or not update.message.text:
+        return
+    
+    message_text = update.message.text.lower()
+    user_id = update.effective_user.id
+    
+    # List of supported hashtags
+    hashtags = ["#aporte", "#recomendación", "#reseña", "#crítica", "#debate", "#pregunta", "#spoiler"]
+    
+    # Check if any hashtag is present in the message
+    for hashtag in hashtags:
+        if hashtag in message_text:
+            reaction = get_random_reaction(hashtag, user_id)
+            await update.message.reply_text(reaction)
+            break  # Only respond to the first hashtag found
