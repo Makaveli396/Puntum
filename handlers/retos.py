@@ -1,82 +1,62 @@
 from telegram import Update
 from telegram.ext import ContextTypes
+from db import get_current_challenge, set_challenge, clear_challenge
 from datetime import datetime
-import os, json
 
-RETO_SEMANAL = {
-    "hashtag": "#crítica",
-    "min_words": 100,
-    "bonus_points": 15
-}
-
-def get_current_challenge():
-    if os.path.exists("custom_challenge.txt"):
-        with open("custom_challenge.txt", "r", encoding="utf-8") as f:
-            return f.read().strip()
-    return None
-
-def set_challenge(text):
-    with open("custom_challenge.txt", "w", encoding="utf-8") as f:
-        f.write(text.strip())
-
-def clear_challenge():
-    if os.path.exists("custom_challenge.txt"):
-        os.remove("custom_challenge.txt")
+# Retos predefinidos con validaciones string-based
+WEEKLY_CHALLENGES = [
+    {
+        "id": 1,
+        "title": "Documental Latinoamericano",
+        "description": "Recomienda un documental latinoamericano anterior al año 2000",
+        "hashtag": "#recomendación",
+        "bonus_points": 10,
+        "validation_keywords": ["argentina", "méxico", "brasil", "chile", "colombia", "perú", "venezuela", "bolivia", "ecuador"],
+        "validation_type": "country_keywords"
+    },
+    {
+        "id": 2,
+        "title": "Cine de Terror Clásico",
+        "description": "Reseña una película de terror de los años 70-80",
+        "hashtag": "#reseña",
+        "bonus_points": 15,
+        "validation_keywords": ["70", "80", "1970", "1980", "terror", "horror"],
+        "validation_type": "genre_keywords"
+    },
+]
 
 def get_weekly_challenge():
-    return RETO_SEMANAL
+    # Devuelve el reto predefinido en función de la semana actual
+    week_number = datetime.now().isocalendar()[1]
+    return WEEKLY_CHALLENGES[week_number % len(WEEKLY_CHALLENGES)]
 
-def validate_challenge_submission(challenge, text):
-    hashtag_ok = challenge["hashtag"] in text.lower()
-    word_count = len(text.split())
-    if hashtag_ok and word_count >= challenge.get("min_words", 0):
-        return True
+def validate_challenge_submission(challenge, message_text):
+    message_text = message_text.lower()
+    if challenge.get("validation_type") == "country_keywords":
+        return any(keyword in message_text for keyword in challenge["validation_keywords"])
+    elif challenge.get("validation_type") == "genre_keywords":
+        return any(keyword in message_text for keyword in challenge["validation_keywords"])
     return False
-
-# NUEVOS: comandos y tarea programada
 
 async def cmd_reto(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reto = get_weekly_challenge()
     text = (
-    f"🎬 *Reto semanal activo:*\n"
-    f"Hashtag: `{reto['hashtag']}`\n"
-    f"Requiere mínimo *{reto['min_words']}* palabras.\n"
-    f"Bonus: +{reto['bonus_points']} puntos"
-)
-
+        f"📢 *Reto semanal actual:*
+"
+        f"*Título:* {reto['title']}
+"
+        f"*Descripción:* {reto['description']}
+"
+        f"*Hashtag:* `{reto['hashtag']}`
+"
+        f"*Bonus:* +{reto['bonus_points']} puntos"
+    )
     await update.message.reply_text(text, parse_mode="Markdown")
 
 async def cmd_nuevo_reto(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if len(context.args) < 3:
-        await update.message.reply_text("Uso: /nuevoreto <hashtag> <min_palabras> <bonus>")
-        return
+    set_challenge("")
+    await update.message.reply_text("✅ El reto personalizado ha sido limpiado. Se usará el reto automático.")
 
-    try:
-        hashtag = context.args[0]
-        min_words = int(context.args[1])
-        bonus = int(context.args[2])
-
-        global RETO_SEMANAL
-        RETO_SEMANAL = {
-            "hashtag": hashtag,
-            "min_words": min_words,
-            "bonus_points": bonus
-        }
-
-        await update.message.reply_text(f"✅ Nuevo reto semanal activado: {hashtag}, {min_words} palabras, +{bonus} pts")
-
-    except ValueError:
-        await update.message.reply_text("❌ Error en los parámetros. Usa números para min_palabras y bonus.")
-
-async def reto_job(context: ContextTypes.DEFAULT_TYPE):
-    reto = get_weekly_challenge()
-    text = (
-        f"📢 *Reto semanal actual:*
-"
-        f"Hashtag: `{reto['hashtag']}`
-"
-        f"Requiere mínimo *{reto['min_words']}* palabras.
-"
-        f"Bonus: +{reto['bonus_points']} puntos"
-    )
-    await context.bot.send_message(chat_id=context.job.chat_id, text=text, parse_mode="Markdown")
+async def cmd_borrar_reto(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    clear_challenge()
+    await update.message.reply_text("🗑️ Reto semanal personalizado eliminado.")
