@@ -1,53 +1,102 @@
 from telegram import Update
-from db import get_current_challenge, set_challenge, add_points
+from db import get_current_challenge, set_challenge
 import random
 import datetime
+import re
 
-# Pool de retos cinematográficos
+# Pool de retos cinematográficos con validaciones serializables
 WEEKLY_CHALLENGES = [
     {
         "title": "🎭 Semana del Cine Clásico",
         "description": "Comparte una reseña de una película anterior a 1980",
         "hashtag": "#reseña",
         "bonus_points": 5,
-        "validation": lambda text: any(year in text for year in [str(y) for y in range(1900, 1980)])
+        "validation_type": "year_range",
+        "validation_params": {"min_year": 1900, "max_year": 1979}
     },
     {
         "title": "🌍 Semana del Cine Internacional", 
         "description": "Recomienda una película no estadounidense con formato completo",
         "hashtag": "#recomendación",
         "bonus_points": 7,
-        "validation": lambda text: True  # Se valida por formato en hashtags.py
+        "validation_type": "format_check",
+        "validation_params": {"requires_format": True}
     },
     {
         "title": "🎪 Semana del Cine de Culto",
         "description": "Haz una crítica de una película considerada 'de culto'",
         "hashtag": "#crítica", 
         "bonus_points": 10,
-        "validation": lambda text: any(word in text.lower() for word in ['culto', 'underground', 'indie', 'alternativo'])
+        "validation_type": "keyword_match",
+        "validation_params": {"keywords": ["culto", "underground", "indie", "alternativo", "b movie", "exploitation"]}
     },
     {
         "title": "🏆 Semana de Directores Legendarios",
         "description": "Aporta contenido sobre Kubrick, Tarantino, Scorsese, Coppola o Hitchcock",
         "hashtag": "#aporte",
         "bonus_points": 6,
-        "validation": lambda text: any(director in text.lower() for director in ['kubrick', 'tarantino', 'scorsese', 'coppola', 'hitchcock'])
+        "validation_type": "keyword_match",
+        "validation_params": {"keywords": ["kubrick", "tarantino", "scorsese", "coppola", "hitchcock", "bergman", "fellini"]}
     },
     {
         "title": "🎨 Semana del Análisis Profundo",
-        "description": "Inicia un debate sobre técnicas cinematográficas (fotografía, sonido, montaje)",
+        "description": "Inicia un debate sobre técnicas cinematográficas",
         "hashtag": "#debate",
         "bonus_points": 8,
-        "validation": lambda text: any(word in text.lower() for word in ['fotografía', 'sonido', 'montaje', 'edición', 'cinematografía', 'plano'])
+        "validation_type": "keyword_match",
+        "validation_params": {"keywords": ["fotografía", "sonido", "montaje", "edición", "cinematografía", "plano", "iluminación", "banda sonora"]}
     },
     {
         "title": "🔍 Semana del Cine Perdido",
         "description": "Pregunta por películas difíciles de encontrar o poco conocidas",
         "hashtag": "#pregunta",
         "bonus_points": 4,
-        "validation": lambda text: any(word in text.lower() for word in ['dónde ver', 'conocen', 'recomiendan', 'perdida', 'rara'])
+        "validation_type": "keyword_match",
+        "validation_params": {"keywords": ["dónde ver", "conocen", "recomiendan", "perdida", "rara", "difícil encontrar", "descatalogada"]}
+    },
+    {
+        "title": "🎞️ Semana de Documentales",
+        "description": "Comparte una reseña o recomendación de documental",
+        "hashtag": "#reseña",
+        "bonus_points": 6,
+        "validation_type": "keyword_match", 
+        "validation_params": {"keywords": ["documental", "documentary", "no ficción", "real", "testimonio"]}
+    },
+    {
+        "title": "🏴‍☠️ Semana del Cine Pirata",
+        "description": "Habla sobre cine independiente o producciones guerrilla",
+        "hashtag": "#crítica",
+        "bonus_points": 7,
+        "validation_type": "keyword_match",
+        "validation_params": {"keywords": ["independiente", "guerrilla", "low budget", "mumblecore", "dogma 95"]}
     }
 ]
+
+def validate_challenge_text(text, validation_type, validation_params):
+    """Valida si un texto cumple con los criterios del reto"""
+    text_lower = text.lower()
+    
+    if validation_type == "year_range":
+        min_year = validation_params.get("min_year", 1900)
+        max_year = validation_params.get("max_year", 2024)
+        
+        # Buscar años en el texto
+        years = re.findall(r'\b(19\d{2}|20\d{2})\b', text)
+        for year_str in years:
+            year = int(year_str)
+            if min_year <= year <= max_year:
+                return True
+        return False
+    
+    elif validation_type == "keyword_match":
+        keywords = validation_params.get("keywords", [])
+        return any(keyword.lower() in text_lower for keyword in keywords)
+    
+    elif validation_type == "format_check":
+        # Buscar patrón: título, país, año
+        return bool(re.search(r'[A-Za-z\s]+,\s*[A-Za-z\s]+,\s*\d{4}', text))
+    
+    return True
 
 async def cmd_reto(update: Update, context):
     """Comando para mostrar el reto actual de la semana"""
@@ -76,14 +125,17 @@ async def reto_job(context):
     try:
         print("[DEBUG] Ejecutando reto_job semanal")
         
+        # Obtener chat_id configurado
+        from db import get_bot_config
+        chat_id = get_bot_config("main_chat_id")
+        
         # Seleccionar reto aleatorio
         new_challenge = random.choice(WEEKLY_CHALLENGES)
         
-        # Guardar en BD (necesitaremos actualizar db.py)
+        # Guardar en BD
         set_challenge(new_challenge)
         
         # Notificar al grupo si tenemos chat_id
-        chat_id = context.job.data if context.job.data else None
         if chat_id:
             msg = f"🚨 **¡NUEVO RETO SEMANAL!**\n\n"
             msg += f"**{new_challenge['title']}**\n\n" 
@@ -110,16 +162,24 @@ async def check_challenge_completion(update: Update, context, hashtag, text):
         # Verificar si el hashtag coincide
         if hashtag != current_challenge.get('hashtag'):
             return 0
-            
+        
+        # Obtener parámetros de validación
+        validation_type = current_challenge.get('validation_type', 'always_true')
+        validation_params = current_challenge.get('validation_params', {})
+        
         # Verificar validación específica del reto
-        validation_func = current_challenge.get('validation')
-        if validation_func and validation_func(text):
+        if validate_challenge_text(text, validation_type, validation_params):
             bonus_points = current_challenge.get('bonus_points', 0)
+            
+            # Registrar completion del reto
+            from db import mark_challenge_completed
+            mark_challenge_completed(update.effective_user.id, current_challenge['title'])
             
             # Notificar al usuario
             await update.message.reply_text(
-                f"🎯 ¡RETO COMPLETADO!\n"
-                f"Bonus: +{bonus_points} puntos por '{current_challenge['title']}'"
+                f"🎯 **¡RETO COMPLETADO!**\n"
+                f"'{current_challenge['title']}'\n"
+                f"Bonus: +{bonus_points} puntos 🎉"
             )
             
             return bonus_points
@@ -138,22 +198,3 @@ def get_next_sunday():
         days_ahead += 7
     next_sunday = today + datetime.timedelta(days_ahead)
     return next_sunday.strftime("%d/%m/%Y")
-
-def get_current_challenge():
-    """Obtiene el reto actual - implementación temporal hasta actualizar DB"""
-    # Por ahora devuelve un reto aleatorio
-    # TODO: Implementar correctamente con BD
-    import json
-    try:
-        # Intentar leer desde archivo temporal
-        with open('current_challenge.json', 'r') as f:
-            return json.load(f)
-    except:
-        # Si no existe, crear uno nuevo
-        challenge = random.choice(WEEKLY_CHALLENGES)
-        try:
-            with open('current_challenge.json', 'w') as f:
-                json.dump(challenge, f)
-        except:
-            pass
-        return challenge
