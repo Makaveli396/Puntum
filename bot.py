@@ -1,0 +1,29 @@
+from telegram.ext import (
+    ApplicationBuilder, CommandHandler, MessageHandler, filters, CallbackContext
+)
+from handlers.hashtags import handle_hashtags
+from handlers.ranking import ranking_job, cmd_ranking
+from handlers.retos import reto_job, cmd_reto
+from handlers.spam import spam_handler
+from handlers.phrases import phrase_middleware
+from utils import cmd_mipuntaje
+import asyncio
+import os
+
+async def main():
+    app = ApplicationBuilder().token(os.environ["BOT_TOKEN"]).build()
+
+    app.add_handler(MessageHandler(filters.ALL, phrase_middleware), group=0)
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_hashtags))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, spam_handler), group=1)
+    app.add_handler(CommandHandler("ranking", cmd_ranking))
+    app.add_handler(CommandHandler("reto", cmd_reto))
+    app.add_handler(CommandHandler("mipuntaje", cmd_mipuntaje))
+
+    app.job_queue.run_repeating(ranking_job, interval=604800, first=0)
+    app.job_queue.run_repeating(reto_job, interval=604800, first=0)
+
+    await app.run_polling()
+
+if __name__ == "__main__":
+    asyncio.run(main())
