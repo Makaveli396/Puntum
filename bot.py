@@ -27,10 +27,9 @@ async def main():
     await app.initialize()
     await app.start()
 
-    # Webhook explícito + log
     webhook_url = os.environ["RENDER_EXTERNAL_URL"]
-    await app.bot.set_webhook(url=webhook_url)
-    print(f"[DEBUG] Webhook set to: {webhook_url}")
+    result = await app.bot.set_webhook(url=webhook_url)
+    print(f"[DEBUG] Webhook set to: {webhook_url} => {result}")
 
     await asyncio.Event().wait()
 
