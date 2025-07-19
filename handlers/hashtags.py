@@ -1,7 +1,7 @@
 from telegram import Update
 from db import add_points, get_current_challenge
 from handlers.retos import get_weekly_challenge, validate_challenge_submission
-from phrases import get_random_reaction
+from handlers.phrases import get_random_reaction
 import re
 
 POINTS = {
