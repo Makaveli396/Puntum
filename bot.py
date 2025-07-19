@@ -54,17 +54,19 @@ async def post_init(application):
         print("[WARNING] Jobs automáticos no configurados - falta MAIN_CHAT_ID")
 
 async def fallback_debug(update, context):
-    """Handler debug mejorado con más información"""
-    if update.message:
-        print(f"[DEBUG] Mensaje recibido: {update.message.text}")
-        print(f"[DEBUG] Usuario: {update.effective_user.username} (ID: {update.effective_user.id})")
-        print(f"[DEBUG] Chat: {update.effective_chat.id}")
-        
-        # AGREGAR: Respuesta de debug temporal para verificar que llega aquí
-        try:
-            await update.message.reply_text(f"🐛 Debug: Mensaje procesado por fallback_debug")
-        except Exception as e:
-            print(f"[ERROR] Error en fallback_debug: {e}")
+    """Handler debug mejorado con más información - SOLO PARA MENSAJES NO PROCESADOS"""
+    if update.message and update.message.text:
+        # Solo procesar si no es un hashtag (ya que debería haber sido procesado antes)
+        if not any(word.startswith('#') for word in update.message.text.split()):
+            print(f"[DEBUG] Mensaje sin hashtag: {update.message.text}")
+            print(f"[DEBUG] Usuario: {update.effective_user.username} (ID: {update.effective_user.id})")
+            print(f"[DEBUG] Chat: {update.effective_chat.id}")
+            
+            # TEMPORAL: Respuesta de debug solo para mensajes sin hashtags
+            try:
+                await update.message.reply_text(f"🐛 Debug: Mensaje sin hashtag procesado")
+            except Exception as e:
+                print(f"[ERROR] Error en fallback_debug: {e}")
 
 # Variable global para el bot
 bot_app = None
@@ -75,7 +77,7 @@ async def webhook_handler(request: Request) -> Response:
         body = await request.text()
         update_dict = json.loads(body)
         
-        print(f"[WEBHOOK] Recibido: {json.dumps(update_dict, indent=2)[:200]}...")
+        print(f"[WEBHOOK] Recibido: {json.dumps(update_dict, indent=2)[:500]}...")
         
         if bot_app:
             from telegram import Update
@@ -147,6 +149,31 @@ async def cmd_test_job(update, context):
 async def cmd_test(update, context):
     """Comando simple para verificar que el bot responde"""
     await update.message.reply_text("✅ Bot funcionando correctamente!")
+    print(f"[TEST] Bot respondió a {update.effective_user.username}")
+
+# NUEVO: Comando de debug para hashtags
+async def cmd_debug(update, context):
+    """Comando de debug para probar hashtags manualmente"""
+    ADMIN_IDS = [int(x) for x in os.environ.get("ADMIN_IDS", "").split(",") if x.strip()]
+    
+    if not ADMIN_IDS or update.effective_user.id not in ADMIN_IDS:
+        return
+    
+    # Simular mensaje con hashtag
+    if context.args:
+        test_text = " ".join(context.args)
+        print(f"[DEBUG] Testing hashtag processing with: {test_text}")
+        await update.message.reply_text(f"🧪 Testing: {test_text}")
+        
+        # Intentar procesar con la función de hashtags
+        try:
+            # Crear un mensaje simulado para probar
+            await handle_hashtags(update, context)
+        except Exception as e:
+            await update.message.reply_text(f"❌ Error en hashtag processing: {e}")
+            print(f"[ERROR] Error en handle_hashtags: {e}")
+    else:
+        await update.message.reply_text("Uso: /debug #hashtag texto")
 
 async def setup_bot():
     """Configura el bot de Telegram"""
@@ -154,7 +181,7 @@ async def setup_bot():
     
     bot_app = ApplicationBuilder().token(os.environ["BOT_TOKEN"]).post_init(post_init).build()
     
-    # COMANDOS (siempre primero)
+    # ========== COMANDOS (GRUPO 0 - PRIORIDAD MÁXIMA) ==========
     bot_app.add_handler(CommandHandler("start", cmd_start))
     bot_app.add_handler(CommandHandler("help", cmd_help))
     bot_app.add_handler(CommandHandler("ranking", cmd_ranking))
@@ -162,29 +189,49 @@ async def setup_bot():
     bot_app.add_handler(CommandHandler("mipuntaje", cmd_mipuntaje))
     bot_app.add_handler(CommandHandler("miperfil", cmd_miperfil))
     bot_app.add_handler(CommandHandler("mirank", cmd_mirank))
-    bot_app.add_handler(CommandHandler("test", cmd_test))  # NUEVO: Comando test
+    bot_app.add_handler(CommandHandler("test", cmd_test))
     
     # COMANDOS ADMIN
     bot_app.add_handler(CommandHandler("configurarchat", cmd_configurar_chat))
     bot_app.add_handler(CommandHandler("nuevoreto", cmd_nuevo_reto))
     bot_app.add_handler(CommandHandler("testjob", cmd_test_job))
+    bot_app.add_handler(CommandHandler("debug", cmd_debug))  # NUEVO
     
-    # HANDLERS DE MENSAJES (en orden de prioridad)
-    # Group 0: Hashtags (MÁS IMPORTANTE) - AHORA USA LA FUNCIÓN CORRECTA
-    bot_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_hashtags), group=0)
+    # ========== HANDLERS DE MENSAJES (GRUPOS SEPARADOS) ==========
     
-    # Group 1: Detección de spam
-    bot_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, spam_handler), group=1)
+    # GRUPO -1: HASHTAGS (PRIORIDAD MÁXIMA PARA MENSAJES)
+    hashtag_filter = filters.TEXT & ~filters.COMMAND & filters.Regex(r'#\w+')
+    bot_app.add_handler(
+        MessageHandler(hashtag_filter, handle_hashtags), 
+        group=-1
+    )
+    print("[INFO] Handler hashtags registrado en grupo -1 (máxima prioridad)")
     
-    # Group 2: Frases trigger (solo "cine")
-    bot_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, phrase_middleware), group=2)
+    # GRUPO 0: DETECCIÓN DE SPAM
+    bot_app.add_handler(
+        MessageHandler(filters.TEXT & ~filters.COMMAND, spam_handler), 
+        group=0
+    )
     
-    # Group 3: Fallback debug (TEMPORAL - con respuesta)
-    bot_app.add_handler(MessageHandler(filters.ALL, fallback_debug), group=3)
+    # GRUPO 1: FRASES TRIGGER (solo "cine")
+    bot_app.add_handler(
+        MessageHandler(filters.TEXT & ~filters.COMMAND, phrase_middleware), 
+        group=1
+    )
     
-    print("[INFO] Handlers registrados:")
+    # GRUPO 2: FALLBACK DEBUG (ÚLTIMA PRIORIDAD)
+    bot_app.add_handler(
+        MessageHandler(filters.TEXT & ~filters.COMMAND, fallback_debug), 
+        group=2
+    )
+    
+    print("[INFO] ========== HANDLERS REGISTRADOS ==========")
     print(f"[INFO] - Comandos: {len([h for h in bot_app.handlers[0] if isinstance(h, CommandHandler)])}")
-    print(f"[INFO] - Mensajes: {sum(len(group) for group in bot_app.handlers.values()) - len(bot_app.handlers[0])}")
+    for group_num, handlers in bot_app.handlers.items():
+        if group_num != 0:  # Skip comando group
+            message_handlers = [h for h in handlers if isinstance(h, MessageHandler)]
+            print(f"[INFO] - Grupo {group_num}: {len(message_handlers)} message handlers")
+    print("[INFO] =============================================")
     
     # Inicializar
     await bot_app.initialize()
@@ -225,10 +272,14 @@ async def main():
     site = web.TCPSite(runner, '0.0.0.0', port)
     await site.start()
     
+    print("[INFO] ========== BOT INICIADO ==========")
     print("[INFO] Bot y servidor iniciados correctamente")
-    print("[INFO] Para configurar un chat: /configurarchat")
-    print("[INFO] Para probar jobs: /testjob ranking o /testjob reto")
-    print("[INFO] Para test simple: /test")
+    print("[INFO] Comandos disponibles:")
+    print("[INFO] - /test - Verificar funcionamiento")
+    print("[INFO] - /debug #hashtag - Probar hashtag processing (admin)")
+    print("[INFO] - /configurarchat - Configurar chat actual")
+    print("[INFO] - /testjob ranking - Probar job ranking")
+    print("[INFO] =====================================")
     
     # Mantener corriendo
     await asyncio.Event().wait()
