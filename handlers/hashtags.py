@@ -11,7 +11,7 @@ POINTS = {
     "#spoiler": 1,
 }
 
-def handle_hashtags(update: Update, context):
+async def handle_hashtags(update: Update, context):
     text = update.message.text.lower()
     user = update.effective_user
     points = 0
