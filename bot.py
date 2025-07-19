@@ -22,7 +22,7 @@ async def post_init(application):
 async def fallback_debug(update, context):
     if update.message:
         print(f"[DEBUG] Mensaje recibido: {update.message.text}")
-        await update.message.reply_text("📩 Recibido")
+        # REMOVIDO: await update.message.reply_text("📩 Recibido")
 
 # Variable global para el bot
 bot_app = None
@@ -52,23 +52,31 @@ async def setup_bot():
     global bot_app
     
     bot_app = ApplicationBuilder().token(os.environ["BOT_TOKEN"]).post_init(post_init).build()
-
-    # Agregar handlers
+    
+    # COMANDOS (siempre primero)
     bot_app.add_handler(CommandHandler("ranking", cmd_ranking))
     bot_app.add_handler(CommandHandler("reto", cmd_reto))
     bot_app.add_handler(CommandHandler("mipuntaje", cmd_mipuntaje))
     bot_app.add_handler(CommandHandler("help", cmd_help))
     bot_app.add_handler(CommandHandler("start", cmd_start))
-
-    bot_app.add_handler(MessageHandler(filters.ALL, phrase_middleware), group=0)
-    bot_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_hashtags))
+    
+    # HANDLERS DE MENSAJES (en orden de prioridad)
+    # Group 0: Hashtags (MÁS IMPORTANTE)
+    bot_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_hashtags), group=0)
+    
+    # Group 1: Detección de spam
     bot_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, spam_handler), group=1)
-    bot_app.add_handler(MessageHandler(filters.ALL, fallback_debug), group=2)
-
+    
+    # Group 2: Frases trigger (solo "cine")
+    bot_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, phrase_middleware), group=2)
+    
+    # Group 3: Fallback debug (sin respuesta automática)
+    bot_app.add_handler(MessageHandler(filters.ALL, fallback_debug), group=3)
+    
     # Inicializar
     await bot_app.initialize()
     await bot_app.start()
-
+    
     # Configurar webhook
     webhook_url = f"{os.environ['RENDER_EXTERNAL_URL']}/webhook"
     result = await bot_app.bot.set_webhook(url=webhook_url)
@@ -106,3 +114,4 @@ if __name__ == "__main__":
     import nest_asyncio
     nest_asyncio.apply()
     asyncio.run(main())
+  
