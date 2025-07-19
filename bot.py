@@ -26,7 +26,7 @@ async def main():
 
     await app.initialize()
     await app.start()
-    await app.updater.start_polling()
+    await app.bot.set_webhook(url=os.environ["RENDER_EXTERNAL_URL"])
     await asyncio.Event().wait()
 
 if __name__ == "__main__":
