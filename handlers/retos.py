@@ -1,6 +1,5 @@
 from telegram import Update
 from telegram.ext import ContextTypes
-from db import set_challenge, clear_challenge
 from datetime import datetime
 
 # Retos predefinidos con validaciones string-based
@@ -38,12 +37,30 @@ def get_current_challenge():
         custom_challenge = get_challenge_from_db()
         if custom_challenge:
             return custom_challenge
-    except (ImportError, AttributeError):
+    except (ImportError, AttributeError, Exception):
         # Si no existe la función en db, usa el reto automático
         pass
     
     # Devuelve el reto automático semanal
     return get_weekly_challenge()
+
+def set_challenge_safe(challenge_text):
+    """Wrapper seguro para set_challenge"""
+    try:
+        from db import set_challenge
+        return set_challenge(challenge_text)
+    except (ImportError, AttributeError, Exception) as e:
+        print(f"[WARNING] set_challenge no disponible: {e}")
+        return False
+
+def clear_challenge_safe():
+    """Wrapper seguro para clear_challenge"""
+    try:
+        from db import clear_challenge
+        return clear_challenge()
+    except (ImportError, AttributeError, Exception) as e:
+        print(f"[WARNING] clear_challenge no disponible: {e}")
+        return False
 
 def validate_challenge_submission(challenge, message_text):
     """Valida si un mensaje cumple con los requisitos del reto"""
@@ -97,8 +114,11 @@ async def cmd_reto(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def cmd_nuevo_reto(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Comando para admin: limpiar reto personalizado"""
     try:
-        set_challenge("")
-        await update.message.reply_text("✅ El reto personalizado ha sido limpiado. Se usará el reto automático.")
+        result = set_challenge_safe("")
+        if result:
+            await update.message.reply_text("✅ El reto personalizado ha sido limpiado. Se usará el reto automático.")
+        else:
+            await update.message.reply_text("⚠️ Función de retos personalizados no disponible. Usando reto automático.")
     except Exception as e:
         print(f"[ERROR] Error en cmd_nuevo_reto: {e}")
         await update.message.reply_text("❌ Error al limpiar el reto personalizado.")
@@ -106,8 +126,11 @@ async def cmd_nuevo_reto(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def cmd_borrar_reto(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Comando para admin: borrar reto personalizado"""
     try:
-        clear_challenge()
-        await update.message.reply_text("🗑️ Reto semanal personalizado eliminado.")
+        result = clear_challenge_safe()
+        if result:
+            await update.message.reply_text("🗑️ Reto semanal personalizado eliminado.")
+        else:
+            await update.message.reply_text("⚠️ Función de retos personalizados no disponible.")
     except Exception as e:
         print(f"[ERROR] Error en cmd_borrar_reto: {e}")
         await update.message.reply_text("❌ Error al borrar el reto personalizado.")
