@@ -15,10 +15,19 @@ async def handle_hashtags(update: Update, context):
     text = update.message.text if update.message and update.message.text else ""
     user = update.effective_user
     points = 0
-
+    found_tags = []
+    
+    print(f"[DEBUG] handle_hashtags: {text}")
+    
     for tag, value in POINTS.items():
         if tag in text.lower():
             points += value
-
+            found_tags.append(f"{tag} (+{value})")
+    
     if points > 0:
         add_points(user.id, user.username, points)
+        print(f"[DEBUG] {points} puntos otorgados a {user.username}")
+        
+        # Confirmación al usuario
+        tags_text = ", ".join(found_tags)
+        await update.message.reply_text(f"✅ +{points} puntos por: {tags_text}")
