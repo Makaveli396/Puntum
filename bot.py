@@ -7,6 +7,7 @@ from handlers.retos import reto_job, cmd_reto
 from handlers.spam import spam_handler
 from handlers.phrases import phrase_middleware
 from handlers.help import cmd_help
+from handlers.start import cmd_start
 from utils import cmd_mipuntaje
 import asyncio
 import os
@@ -27,6 +28,7 @@ async def main():
     app.add_handler(CommandHandler("reto", cmd_reto))
     app.add_handler(CommandHandler("mipuntaje", cmd_mipuntaje))
     app.add_handler(CommandHandler("help", cmd_help))
+    app.add_handler(CommandHandler("start", cmd_start))
 
     app.add_handler(MessageHandler(filters.ALL, phrase_middleware), group=0)
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_hashtags))
