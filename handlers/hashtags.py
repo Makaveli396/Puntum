@@ -1,5 +1,6 @@
-from db import add_points
 from telegram import Update
+from db import add_points, get_current_challenge
+from retos import get_weekly_challenge, validate_challenge_submission
 import re
 
 POINTS = {
@@ -17,10 +18,8 @@ user_hashtag_cache = {}
 
 def count_words(text):
     """Cuenta palabras en un texto, excluyendo hashtags"""
-    # Remover hashtags y contar palabras
     text_without_hashtags = re.sub(r'#\w+', '', text)
-    words = len(text_without_hashtags.split())
-    return words
+    return len(text_without_hashtags.split())
 
 def is_spam(user_id, hashtag):
     """Detecta si un usuario está spammeando el mismo hashtag"""
@@ -32,11 +31,10 @@ def is_spam(user_id, hashtag):
     
     user_data = user_hashtag_cache[user_id]
     
-    # Si es el mismo hashtag en menos de 5 minutos
     if hashtag in user_data:
-        if current_time - user_data.get("last_time", 0) < 300:  # 5 minutos
+        if current_time - user_data.get("last_time", 0) < 300:
             user_data[hashtag] = user_data.get(hashtag, 0) + 1
-            if user_data[hashtag] > 3:  # Máximo 3 veces el mismo hashtag en 5 min
+            if user_data[hashtag] > 3:
                 return True
         else:
             user_data[hashtag] = 1
@@ -52,17 +50,16 @@ async def handle_hashtags(update: Update, context):
     points = 0
     found_tags = []
     warnings = []
+    response = ""
     
     print(f"[DEBUG] handle_hashtags: {text}")
     
     for tag, value in POINTS.items():
         if tag in text.lower():
-            # Verificar spam
             if is_spam(user.id, tag):
                 warnings.append(f"⚠️ {tag}: Detectado spam. Usa hashtags con moderación.")
                 continue
             
-            # Validaciones específicas
             if tag == "#reseña":
                 word_count = count_words(text)
                 if word_count < 50:
@@ -76,22 +73,18 @@ async def handle_hashtags(update: Update, context):
                     continue
             
             elif tag == "#recomendación":
-                # Buscar patrón: título, país, año
                 has_pattern = bool(re.search(r'[A-Za-z\s]+,\s*[A-Za-z\s]+,\s*\d{4}', text))
                 if not has_pattern:
                     warnings.append(f"💡 {tag}: Incluye formato 'Título, País, Año' para más puntos.")
-                    # No bloqueamos, pero damos menos puntos
-                    value = 3  # Reducimos de 5 a 3
+                    value = 3
             
             points += value
             found_tags.append(f"{tag} (+{value})")
     
-    # Respuesta al usuario
     if points > 0 or warnings:
         add_points(user.id, user.username, points)
         print(f"[DEBUG] {points} puntos otorgados a {user.username}")
         
-        response = ""
         if points > 0:
             tags_text = ", ".join(found_tags)
             response += f"✅ +{points} puntos por: {tags_text}\n"
@@ -99,9 +92,32 @@ async def handle_hashtags(update: Update, context):
         if warnings:
             response += "\n".join(warnings)
         
+        # Validación de reto semanal
+        try:
+            challenge_text = get_current_challenge()
+            current_challenge = get_weekly_challenge()
+
+            if not challenge_text:
+                if current_challenge["hashtag"] in text.lower():
+                    if validate_challenge_submission(current_challenge, text):
+                        bonus = current_challenge["bonus_points"]
+                        add_points(
+                            user.id,
+                            user.username,
+                            bonus,
+                            hashtag=current_challenge["hashtag"],
+                            message_text=text,
+                            chat_id=update.effective_chat.id,
+                            message_id=update.message.message_id,
+                            is_challenge_bonus=True
+                        )
+                        response += f"\n\n🎯 ¡Cumpliste el reto semanal! Bonus: +{bonus} puntos 🎉"
+        except Exception as e:
+            print(f"[ERROR] Validando reto semanal: {e}")
+        
         await update.message.reply_text(response.strip())
-    
-    # Detectar spam general (palabras como "gratis", "oferta", etc.)
+
+    # Detección de spam general
     spam_words = ["gratis", "oferta", "descuento", "promoción", "gana dinero", "click aquí"]
     if any(spam_word in text.lower() for spam_word in spam_words):
         await update.message.reply_text("🛑 ¡Cuidado con el spam! Esto es un grupo de cine, no de ofertas.")
