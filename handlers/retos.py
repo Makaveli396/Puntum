@@ -38,14 +38,12 @@ def validate_challenge_submission(challenge, text):
 async def cmd_reto(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reto = get_weekly_challenge()
     text = (
-        f"🎬 *Reto semanal activo:*
-"
-        f"Hashtag: `{reto['hashtag']}`
-"
-        f"Requiere mínimo *{reto['min_words']}* palabras.
-"
-        f"Bonus: +{reto['bonus_points']} puntos"
-    )
+    f"🎬 *Reto semanal activo:*\n"
+    f"Hashtag: `{reto['hashtag']}`\n"
+    f"Requiere mínimo *{reto['min_words']}* palabras.\n"
+    f"Bonus: +{reto['bonus_points']} puntos"
+)
+
     await update.message.reply_text(text, parse_mode="Markdown")
 
 async def cmd_nuevo_reto(update: Update, context: ContextTypes.DEFAULT_TYPE):
