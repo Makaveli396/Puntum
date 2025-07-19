@@ -1,5 +1,5 @@
 from telegram.ext import (
-    ApplicationBuilder, CommandHandler, MessageHandler, filters, CallbackContext
+    ApplicationBuilder, CommandHandler, MessageHandler, filters
 )
 from handlers.hashtags import handle_hashtags
 from handlers.ranking import ranking_job, cmd_ranking
@@ -24,9 +24,12 @@ async def main():
     app.add_handler(CommandHandler("reto", cmd_reto))
     app.add_handler(CommandHandler("mipuntaje", cmd_mipuntaje))
 
-    await app.run_polling()
+    await app.initialize()
+    await app.start()
+    await app.updater.start_polling()
+    await asyncio.Event().wait()
 
 if __name__ == "__main__":
     import nest_asyncio
     nest_asyncio.apply()
-    asyncio.get_event_loop().run_until_complete(main())
+    asyncio.run(main())
