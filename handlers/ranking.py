@@ -41,20 +41,26 @@ async def cmd_ranking(update: Update, context):
         print("[DEBUG] Construyendo mensaje del ranking...")
         msg = "🎬 *TOP 10 CINÉFILOS ACTUALES*\n\n"
         
-        for i, (user, pts, level) in enumerate(top, 1):
-            print(f"[DEBUG] Procesando posición {i}: {user} - {pts} pts")
+        # Iterar sobre los datos correctamente
+        for i, (username, points, level) in enumerate(top, 1):
+            print(f"[DEBUG] Procesando posición {i}: {username} - {points} pts - nivel {level}")
+            
+            # Emojis según posición
             if i == 1:
-                msg += f"🥇 {user} - {pts} pts\n"
+                emoji = "🥇"
             elif i == 2:
-                msg += f"🥈 {user} - {pts} pts\n"
+                emoji = "🥈"
             elif i == 3:
-                msg += f"🥉 {user} - {pts} pts\n"
+                emoji = "🥉"
             else:
-                msg += f"🎭 {i}. {user} - {pts} pts\n"
+                emoji = "🎭"
+            
+            # Agregar línea al mensaje
+            msg += f"{emoji} {i}. {username} - {points} pts\n"
         
         msg += f"\n📅 Próximo ranking oficial: {get_next_sunday()}"
         
-        print(f"[DEBUG] Mensaje construido: {msg}")
+        print(f"[DEBUG] Mensaje construido: {msg[:200]}...")  # Solo primeros 200 chars
         print("[DEBUG] Enviando mensaje...")
         
         await update.message.reply_text(msg, parse_mode='Markdown')
@@ -93,8 +99,9 @@ async def ranking_job(context):
             return
         
         # Crear mensaje épico del ranking
-        winner = top[0][0]  # Primer lugar
-        winner_points = top[0][1]
+        winner_data = top[0]  # Primer lugar
+        winner = winner_data[0]  # username
+        winner_points = winner_data[1]  # points
         
         # Frase aleatoria para el ganador
         winner_phrase = random.choice(RANKING_PHRASES).format(
@@ -107,15 +114,17 @@ async def ranking_job(context):
         msg += f"{winner_phrase}\n\n"
         msg += "🏆 *TOP 10 DE LA SEMANA:*\n\n"
         
-        for i, (user, pts, level) in enumerate(top, 1):
+        for i, (username, points, level) in enumerate(top, 1):
             if i == 1:
-                msg += f"🥇 {user} - {pts} pts\n"
+                emoji = "🥇"
             elif i == 2:
-                msg += f"🥈 {user} - {pts} pts\n"
+                emoji = "🥈"
             elif i == 3:
-                msg += f"🥉 {user} - {pts} pts\n"
+                emoji = "🥉"
             else:
-                msg += f"🎭 {i}. {user} - {pts} pts\n"
+                emoji = "🎭"
+            
+            msg += f"{emoji} {i}. {username} - {points} pts\n"
         
         msg += f"\n{random.choice(CLOSING_PHRASES)}"
         
@@ -148,10 +157,13 @@ def get_last_week_range():
 
 def reset_weekly_points():
     """Reinicia puntos semanales (opcional - usar solo si quieres ranking semanal real)"""
-    from db import conn, cur
+    from db import get_connection
     try:
-        cur.execute("UPDATE users SET points = 0")
+        conn = get_connection()
+        cursor = conn.cursor()
+        cursor.execute("UPDATE users SET points = 0")
         conn.commit()
+        conn.close()
         print("[INFO] Puntos semanales reiniciados")
     except Exception as e:
         print(f"[ERROR] al reiniciar puntos: {e}")

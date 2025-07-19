@@ -245,19 +245,38 @@ def get_user_stats(user_id: int):
     }
 
 def get_top10():
-    """Get top 10 users by points"""
+    """Get top 10 users by points including their level"""
     conn = get_connection()
     cursor = conn.cursor()
-    cursor.execute("""
-        SELECT username, SUM(points) as total
-        FROM points
-        GROUP BY user_id
-        ORDER BY total DESC
-        LIMIT 10
-    """)
-    result = cursor.fetchall()
-    conn.close()
-    return result
+    
+    try:
+        # Obtener usuarios con sus puntos totales y calcular nivel
+        cursor.execute("""
+            SELECT 
+                username, 
+                SUM(points) as total_points,
+                user_id
+            FROM points
+            GROUP BY user_id, username
+            ORDER BY total_points DESC
+            LIMIT 10
+        """)
+        
+        results = cursor.fetchall()
+        
+        # Agregar nivel calculado a cada usuario
+        top_users = []
+        for username, total_points, user_id in results:
+            level = calculate_level(total_points)
+            top_users.append((username, total_points, level))
+        
+        return top_users
+        
+    except Exception as e:
+        print(f"[ERROR] get_top10: {e}")
+        return []
+    finally:
+        conn.close()
 
 def set_chat_config(chat_id: int, chat_name: str, rankings_enabled: bool = True, challenges_enabled: bool = True):
     """Configure chat settings"""
