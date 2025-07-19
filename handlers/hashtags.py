@@ -14,24 +14,21 @@ POINTS = {
     "#spoiler": 1,
 }
 
-# Cache para antispam - almacena {user_id: {"hashtag": count, "last_message_time": timestamp}}
 user_hashtag_cache = {}
 
 def count_words(text):
-    """Cuenta palabras en un texto, excluyendo hashtags"""
     text_without_hashtags = re.sub(r'#\w+', '', text)
     return len(text_without_hashtags.split())
 
 def is_spam(user_id, hashtag):
-    """Detecta si un usuario está spammeando el mismo hashtag"""
     import time
     current_time = time.time()
-    
+
     if user_id not in user_hashtag_cache:
         user_hashtag_cache[user_id] = {}
-    
+
     user_data = user_hashtag_cache[user_id]
-    
+
     if hashtag in user_data:
         if current_time - user_data.get("last_time", 0) < 300:
             user_data[hashtag] = user_data.get(hashtag, 0) + 1
@@ -41,7 +38,7 @@ def is_spam(user_id, hashtag):
             user_data[hashtag] = 1
     else:
         user_data[hashtag] = 1
-    
+
     user_data["last_time"] = current_time
     return False
 
@@ -94,7 +91,7 @@ async def handle_hashtags(update: Update, context):
         if warnings:
             response += "\n".join(warnings)
 
-        # Validación de reto semanal
+        # Validación reto semanal
         try:
             challenge_text = get_current_challenge()
             current_challenge = get_weekly_challenge()
@@ -124,9 +121,52 @@ async def handle_hashtags(update: Update, context):
         except Exception as e:
             print(f"[ERROR] Validando reto semanal: {e}")
 
+        # Validación reto diario
+        from handlers.retos_diarios import get_today_challenge
+
+        try:
+            daily = get_today_challenge()
+            cumple = False
+
+            if "hashtag" in daily and daily["hashtag"] in text.lower():
+                cumple = True
+            elif "keywords" in daily:
+                cumple = any(word in text.lower() for word in daily["keywords"])
+                if not cumple:
+                    print("[INFO] No contiene keywords del reto diario")
+
+            if cumple and "min_words" in daily:
+                word_count = count_words(text)
+                if word_count < daily["min_words"]:
+                    cumple = False
+                    print(f"[INFO] No cumple palabras mínimas ({word_count} / {daily['min_words']})")
+
+            if cumple:
+                daily_bonus = daily["bonus_points"]
+                bonus_result = add_points(
+                    user.id,
+                    user.username,
+                    daily_bonus,
+                    hashtag="(reto_diario)",
+                    message_text=text,
+                    chat_id=update.effective_chat.id,
+                    message_id=update.message.message_id,
+                    is_challenge_bonus=True
+                )
+                response += f"\n🎯 ¡Cumpliste el reto diario! Bonus: +{daily_bonus} puntos 🎉"
+
+                if bonus_result and bonus_result.get("level_change", {}).get("leveled_up"):
+                    level_info = bonus_result["level_change"]
+                    response += (
+                        f"\n\n🆙 ¡Felicidades, subiste a nivel {level_info['new_level']}!\n"
+                        f"Ahora eres *{level_info['level_name']}* 🎉"
+                    )
+        except Exception as e:
+            print(f"[ERROR] Validando reto diario: {e}")
+
         await update.message.reply_text(response.strip())
 
-    # Spam general
     spam_words = ["gratis", "oferta", "descuento", "promoción", "gana dinero", "click aquí"]
     if any(spam_word in text.lower() for spam_word in spam_words):
         await update.message.reply_text("🛑 ¡Cuidado con el spam! Esto es un grupo de cine, no de ofertas.")
+
