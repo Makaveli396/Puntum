@@ -1,200 +1,187 @@
 from telegram import Update
-from db import get_current_challenge, set_challenge
-import random
-import datetime
-import re
+from telegram.ext import ContextTypes
+from db import get_current_challenge, set_challenge, get_chat_config, set_chat_config
+import json
+from datetime import datetime
 
-# Pool de retos cinematográficos con validaciones serializables
+# Retos predefinidos con validaciones string-based
 WEEKLY_CHALLENGES = [
     {
-        "title": "🎭 Semana del Cine Clásico",
-        "description": "Comparte una reseña de una película anterior a 1980",
-        "hashtag": "#reseña",
-        "bonus_points": 5,
-        "validation_type": "year_range",
-        "validation_params": {"min_year": 1900, "max_year": 1979}
-    },
-    {
-        "title": "🌍 Semana del Cine Internacional", 
-        "description": "Recomienda una película no estadounidense con formato completo",
+        "id": 1,
+        "title": "Documental Latinoamericano",
+        "description": "Recomienda un documental latinoamericano anterior al año 2000",
         "hashtag": "#recomendación",
-        "bonus_points": 7,
-        "validation_type": "format_check",
-        "validation_params": {"requires_format": True}
-    },
-    {
-        "title": "🎪 Semana del Cine de Culto",
-        "description": "Haz una crítica de una película considerada 'de culto'",
-        "hashtag": "#crítica", 
         "bonus_points": 10,
-        "validation_type": "keyword_match",
-        "validation_params": {"keywords": ["culto", "underground", "indie", "alternativo", "b movie", "exploitation"]}
+        "validation_keywords": ["argentina", "méxico", "brasil", "chile", "colombia", "perú", "venezuela", "bolivia", "ecuador", "uruguay", "paraguay"],
+        "validation_type": "country_keywords"
     },
     {
-        "title": "🏆 Semana de Directores Legendarios",
-        "description": "Aporta contenido sobre Kubrick, Tarantino, Scorsese, Coppola o Hitchcock",
-        "hashtag": "#aporte",
-        "bonus_points": 6,
-        "validation_type": "keyword_match",
-        "validation_params": {"keywords": ["kubrick", "tarantino", "scorsese", "coppola", "hitchcock", "bergman", "fellini"]}
-    },
-    {
-        "title": "🎨 Semana del Análisis Profundo",
-        "description": "Inicia un debate sobre técnicas cinematográficas",
-        "hashtag": "#debate",
-        "bonus_points": 8,
-        "validation_type": "keyword_match",
-        "validation_params": {"keywords": ["fotografía", "sonido", "montaje", "edición", "cinematografía", "plano", "iluminación", "banda sonora"]}
-    },
-    {
-        "title": "🔍 Semana del Cine Perdido",
-        "description": "Pregunta por películas difíciles de encontrar o poco conocidas",
-        "hashtag": "#pregunta",
-        "bonus_points": 4,
-        "validation_type": "keyword_match",
-        "validation_params": {"keywords": ["dónde ver", "conocen", "recomiendan", "perdida", "rara", "difícil encontrar", "descatalogada"]}
-    },
-    {
-        "title": "🎞️ Semana de Documentales",
-        "description": "Comparte una reseña o recomendación de documental",
+        "id": 2,
+        "title": "Cine de Terror Clásico",
+        "description": "Reseña una película de terror de los años 70-80",
         "hashtag": "#reseña",
-        "bonus_points": 6,
-        "validation_type": "keyword_match", 
-        "validation_params": {"keywords": ["documental", "documentary", "no ficción", "real", "testimonio"]}
+        "bonus_points": 15,
+        "validation_keywords": ["70", "80", "1970", "1980", "terror", "horror"],
+        "validation_type": "decade_genre"
     },
     {
-        "title": "🏴‍☠️ Semana del Cine Pirata",
-        "description": "Habla sobre cine independiente o producciones guerrilla",
+        "id": 3,
+        "title": "Director Europeo",
+        "description": "Crítica de una película de directores europeos icónicos",
         "hashtag": "#crítica",
-        "bonus_points": 7,
-        "validation_type": "keyword_match",
-        "validation_params": {"keywords": ["independiente", "guerrilla", "low budget", "mumblecore", "dogma 95"]}
+        "bonus_points": 12,
+        "validation_keywords": ["bergman", "fellini", "tarkovsky", "godard", "truffaut", "antonioni", "buñuel"],
+        "validation_type": "director_keywords"
+    },
+    {
+        "id": 4,
+        "title": "Cine Independiente",
+        "description": "Aporta información sobre cine independiente o bajo presupuesto",
+        "hashtag": "#aporte",
+        "bonus_points": 8,
+        "validation_keywords": ["independiente", "indie", "bajo presupuesto", "experimental"],
+        "validation_type": "genre_keywords"
     }
 ]
 
-def validate_challenge_text(text, validation_type, validation_params):
-    """Valida si un texto cumple con los criterios del reto"""
+def get_weekly_challenge():
+    """Obtiene el reto de la semana basado en número de semana del año"""
+    week_number = datetime.now().isocalendar()[1]
+    challenge_index = (week_number - 1) % len(WEEKLY_CHALLENGES)
+    return WEEKLY_CHALLENGES[challenge_index]
+
+def validate_challenge_submission(challenge, text):
+    """Valida si un mensaje cumple con los requisitos del reto"""
     text_lower = text.lower()
     
-    if validation_type == "year_range":
-        min_year = validation_params.get("min_year", 1900)
-        max_year = validation_params.get("max_year", 2024)
-        
-        # Buscar años en el texto
-        years = re.findall(r'\b(19\d{2}|20\d{2})\b', text)
-        for year_str in years:
-            year = int(year_str)
-            if min_year <= year <= max_year:
-                return True
-        return False
+    if challenge["validation_type"] == "country_keywords":
+        return any(keyword in text_lower for keyword in challenge["validation_keywords"])
     
-    elif validation_type == "keyword_match":
-        keywords = validation_params.get("keywords", [])
-        return any(keyword.lower() in text_lower for keyword in keywords)
+    elif challenge["validation_type"] == "decade_genre":
+        has_decade = any(decade in text_lower for decade in ["70", "80", "1970", "1980"])
+        has_genre = any(genre in text_lower for genre in ["terror", "horror"])
+        return has_decade or has_genre
     
-    elif validation_type == "format_check":
-        # Buscar patrón: título, país, año
-        return bool(re.search(r'[A-Za-z\s]+,\s*[A-Za-z\s]+,\s*\d{4}', text))
+    elif challenge["validation_type"] == "director_keywords":
+        return any(director in text_lower for director in challenge["validation_keywords"])
     
-    return True
+    elif challenge["validation_type"] == "genre_keywords":
+        return any(keyword in text_lower for keyword in challenge["validation_keywords"])
+    
+    return False
 
-async def cmd_reto(update: Update, context):
-    """Comando para mostrar el reto actual de la semana"""
+async def cmd_reto(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Muestra el reto actual de la semana"""
     try:
+        # Intentar obtener reto personalizado de la DB
         current_challenge = get_current_challenge()
         
         if current_challenge:
-            msg = f"🎯 **RETO DE LA SEMANA**\n\n"
-            msg += f"**{current_challenge['title']}**\n\n"
-            msg += f"📝 {current_challenge['description']}\n\n"
-            msg += f"🏷️ Usa: {current_challenge['hashtag']}\n"
-            msg += f"🎁 Bonus: +{current_challenge['bonus_points']} puntos extra\n\n"
-            msg += f"⏰ Válido hasta: {get_next_sunday()}\n\n"
-            msg += "💡 *Tip: Los retos se renuevan cada domingo*"
-        else:
-            msg = "🔄 Generando nuevo reto. Usa `/reto` en unos minutos."
-            
-        await update.message.reply_text(msg)
-        
-    except Exception as e:
-        print(f"[ERROR] en cmd_reto: {e}")
-        await update.message.reply_text("⚠️ Error al obtener reto. Intenta en unos minutos.")
-
-async def reto_job(context):
-    """Job que se ejecuta cada domingo para generar nuevo reto semanal"""
-    try:
-        print("[DEBUG] Ejecutando reto_job semanal")
-        
-        # Obtener chat_id configurado
-        from db import get_bot_config
-        chat_id = get_bot_config("main_chat_id")
-        
-        # Seleccionar reto aleatorio
-        new_challenge = random.choice(WEEKLY_CHALLENGES)
-        
-        # Guardar en BD
-        set_challenge(new_challenge)
-        
-        # Notificar al grupo si tenemos chat_id
-        if chat_id:
-            msg = f"🚨 **¡NUEVO RETO SEMANAL!**\n\n"
-            msg += f"**{new_challenge['title']}**\n\n" 
-            msg += f"🎯 {new_challenge['description']}\n\n"
-            msg += f"🏷️ Usa: {new_challenge['hashtag']}\n"
-            msg += f"🎁 Bonus: +{new_challenge['bonus_points']} puntos extra\n\n"
-            msg += "⚡ ¡El que participe primero se lleva puntos adicionales!"
-            
-            await context.bot.send_message(chat_id=chat_id, text=msg)
-            
-        print(f"[DEBUG] Nuevo reto configurado: {new_challenge['title']}")
-        
-    except Exception as e:
-        print(f"[ERROR] en reto_job: {e}")
-
-async def check_challenge_completion(update: Update, context, hashtag, text):
-    """Verifica si un mensaje cumple con el reto actual"""
-    try:
-        current_challenge = get_current_challenge()
-        
-        if not current_challenge:
-            return 0
-            
-        # Verificar si el hashtag coincide
-        if hashtag != current_challenge.get('hashtag'):
-            return 0
-        
-        # Obtener parámetros de validación
-        validation_type = current_challenge.get('validation_type', 'always_true')
-        validation_params = current_challenge.get('validation_params', {})
-        
-        # Verificar validación específica del reto
-        if validate_challenge_text(text, validation_type, validation_params):
-            bonus_points = current_challenge.get('bonus_points', 0)
-            
-            # Registrar completion del reto
-            from db import mark_challenge_completed
-            mark_challenge_completed(update.effective_user.id, current_challenge['title'])
-            
-            # Notificar al usuario
-            await update.message.reply_text(
-                f"🎯 **¡RETO COMPLETADO!**\n"
-                f"'{current_challenge['title']}'\n"
-                f"Bonus: +{bonus_points} puntos 🎉"
+            # Reto personalizado desde DB
+            mensaje = (
+                f"🎯 **Reto Especial**\n\n"
+                f"📽️ {current_challenge}\n\n"
+                f"💰 **Recompensa**: Puntos adicionales según hashtag utilizado\n"
+                f"⏰ **Válido**: Hasta que se establezca un nuevo reto\n\n"
+                f"¡Participa y demuestra tu conocimiento cinéfilo!"
             )
-            
-            return bonus_points
-            
-        return 0
+        else:
+            # Reto automático semanal
+            challenge = get_weekly_challenge()
+            mensaje = (
+                f"🎯 **Reto de la Semana #{datetime.now().isocalendar()[1]}**\n\n"
+                f"📽️ **{challenge['title']}**\n"
+                f"{challenge['description']}\n\n"
+                f"💰 **Recompensa**: +{challenge['bonus_points']} puntos adicionales\n"
+                f"🏷️ **Usa el hashtag**: {challenge['hashtag']}\n"
+                f"⏰ **Válido hasta**: Próximo lunes\n\n"
+                f"💡 *Tip: El bot validará automáticamente tu participación*"
+            )
+        
+        await update.message.reply_text(mensaje, parse_mode='Markdown')
         
     except Exception as e:
-        print(f"[ERROR] verificando reto: {e}")
-        return 0
+        print(f"Error en cmd_reto: {e}")
+        await update.message.reply_text("❌ Error al obtener el reto actual. Inténtalo más tarde.")
 
-def get_next_sunday():
-    """Obtiene la fecha del próximo domingo"""
-    today = datetime.date.today()
-    days_ahead = 6 - today.weekday()  # Domingo es 6
-    if days_ahead <= 0:  # Si hoy es domingo
-        days_ahead += 7
-    next_sunday = today + datetime.timedelta(days_ahead)
-    return next_sunday.strftime("%d/%m/%Y")
+async def reto_job(context: ContextTypes.DEFAULT_TYPE):
+    """Job que se ejecuta semanalmente para anunciar el nuevo reto"""
+    try:
+        # Obtener chat_id configurado para anuncios
+        chat_configs = get_chat_config()
+        
+        if not chat_configs:
+            print("[WARNING] No hay chats configurados para retos automáticos")
+            return
+        
+        # Obtener reto de la semana
+        challenge = get_weekly_challenge()
+        
+        mensaje = (
+            f"🚨 **¡NUEVO RETO SEMANAL!** 🚨\n\n"
+            f"📽️ **{challenge['title']}**\n"
+            f"{challenge['description']}\n\n"
+            f"💰 **Recompensa**: +{challenge['bonus_points']} puntos adicionales\n"
+            f"🏷️ **Hashtag requerido**: {challenge['hashtag']}\n"
+            f"⏰ **Plazo**: 7 días desde ahora\n\n"
+            f"¡A demostrar sus conocimientos cinéfilos! 🎬\n"
+            f"Usa `/reto` para ver los detalles cuando quieras."
+        )
+        
+        # Enviar a todos los chats configurados
+        for chat_id in chat_configs:
+            try:
+                await context.bot.send_message(
+                    chat_id=chat_id,
+                    text=mensaje,
+                    parse_mode='Markdown'
+                )
+                print(f"[INFO] Reto semanal enviado a chat {chat_id}")
+            except Exception as e:
+                print(f"[ERROR] No se pudo enviar reto a chat {chat_id}: {e}")
+                
+    except Exception as e:
+        print(f"[ERROR] Error en reto_job: {e}")
+
+# Función para administradores: establecer reto personalizado
+async def cmd_nuevo_reto(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Comando para que administradores establezcan retos personalizados"""
+    # IDs de administradores (deberías configurar esto)
+    ADMIN_IDS = [123456789]  # Reemplazar con IDs reales
+    
+    if update.effective_user.id not in ADMIN_IDS:
+        await update.message.reply_text("❌ Solo administradores pueden usar este comando")
+        return
+    
+    if not context.args:
+        await update.message.reply_text(
+            "❌ Uso: `/nuevoreto <descripción del reto>`\n"
+            "Ejemplo: `/nuevoreto Recomienda una película de Akira Kurosawa`"
+        )
+        return
+    
+    reto_text = " ".join(context.args)
+    
+    try:
+        set_challenge(reto_text)
+        await update.message.reply_text(
+            f"✅ **Nuevo reto establecido:**\n\n"
+            f"📽️ {reto_text}\n\n"
+            f"Los usuarios pueden verlo con `/reto`"
+        )
+        
+        # Opcional: Anunciar inmediatamente
+        mensaje_anuncio = (
+            f"🚨 **¡RETO ESPECIAL ESTABLECIDO!** 🚨\n\n"
+            f"📽️ {reto_text}\n\n"
+            f"💰 **Recompensa**: Puntos adicionales\n"
+            f"🏷️ **Usa cualquier hashtag válido**\n\n"
+            f"¡Participa ahora! 🎬"
+        )
+        
+        # Aquí podrías enviarlo a todos los chats si quieres
+        # await context.bot.send_message(chat_id=MAIN_CHAT_ID, text=mensaje_anuncio)
+        
+    except Exception as e:
+        print(f"Error en cmd_nuevo_reto: {e}")
+        await update.message.reply_text("❌ Error al establecer el reto")
