@@ -10,7 +10,6 @@ from utils import cmd_mipuntaje
 import asyncio
 import os
 
-# ✅ Esto es necesario para que se activen los jobs semanales
 async def post_init(application):
     application.job_queue.run_repeating(ranking_job, interval=604800, first=0)
     application.job_queue.run_repeating(reto_job, interval=604800, first=0)
@@ -28,7 +27,7 @@ async def main():
     await app.initialize()
     await app.start()
 
-    # 🔽 Establecer webhook explícitamente
+    # Webhook explícito + log
     webhook_url = os.environ["RENDER_EXTERNAL_URL"]
     await app.bot.set_webhook(url=webhook_url)
     print(f"[DEBUG] Webhook set to: {webhook_url}")
