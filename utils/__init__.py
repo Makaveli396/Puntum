@@ -90,14 +90,16 @@ async def cmd_miperfil(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         # Progreso de nivel
         if stats['points_to_next'] > 0:
-            current_level_points = stats['points'] - get_level_threshold(stats['level'])
-            next_level_points = get_level_threshold(stats['level'] + 1) - get_level_threshold(stats['level'])
-            progress_percentage = (current_level_points / next_level_points) * 100 if next_level_points > 0 else 100
-            
-            progress_bar = create_progress_bar(progress_percentage)
-            msg += f"📊 **Progreso al nivel {stats['level'] + 1}:**\n"
-            msg += f"{progress_bar} {progress_percentage:.1f}%\n"
-            msg += f"Faltan {stats['points_to_next']} puntos\n\n"
+            level_info = get_level_info(stats['level'])
+            if level_info and level_info.get('next_points'):
+                current_level_points = stats['points'] - level_info['min_points']
+                next_level_points = level_info['next_points'] - level_info['min_points']
+                progress_percentage = (current_level_points / next_level_points) * 100 if next_level_points > 0 else 100
+                
+                progress_bar = create_progress_bar(progress_percentage)
+                msg += f"📊 **Progreso al nivel {stats['level'] + 1}:**\n"
+                msg += f"{progress_bar} {progress_percentage:.1f}%\n"
+                msg += f"Faltan {stats['points_to_next']} puntos\n\n"
         
         # Actividad reciente
         if stats.get('recent_contributions'):
@@ -117,17 +119,6 @@ async def cmd_miperfil(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         print(f"[ERROR] Error en cmd_miperfil: {e}")
         await cmd_mipuntaje(update, context)  # Fallback al comando básico
-
-def get_level_threshold(level: int) -> int:
-    """Obtiene los puntos mínimos requeridos para un nivel"""
-    thresholds = {
-        1: 0,
-        2: 100,
-        3: 250,
-        4: 500,
-        5: 1000
-    }
-    return thresholds.get(level, 0)
 
 def create_progress_bar(percentage: float, length: int = 10) -> str:
     """Crea una barra de progreso visual"""
@@ -149,15 +140,24 @@ def format_number(num: int) -> str:
 async def get_user_rank(user_id: int) -> int:
     """Obtiene la posición del usuario en el ranking global"""
     try:
-        from db import cur
-        cur.execute("""
+        from db import get_connection
+        conn = get_connection()
+        cursor = conn.cursor()
+        
+        cursor.execute("""
             SELECT COUNT(*) + 1 as rank
-            FROM users u1
-            WHERE u1.points > (
-                SELECT points FROM users WHERE id = ?
+            FROM (
+                SELECT user_id, SUM(points) as total_points
+                FROM points
+                GROUP BY user_id
+            ) u1
+            WHERE u1.total_points > (
+                SELECT COALESCE(SUM(points), 0) FROM points WHERE user_id = ?
             )
         """, (user_id,))
-        result = cur.fetchone()
+        
+        result = cursor.fetchone()
+        conn.close()
         return result[0] if result else 0
     except Exception as e:
         print(f"[ERROR] Error obteniendo rank: {e}")

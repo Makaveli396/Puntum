@@ -8,19 +8,17 @@ from handlers.spam import spam_handler
 from handlers.phrases import phrase_middleware
 from handlers.help import cmd_help
 from handlers.start import cmd_start
-from utils import cmd_mipuntaje
-from db import set_chat_config, get_chat_config
+from utils import cmd_mipuntaje, cmd_miperfil, cmd_mirank
+from db import set_chat_config, get_chat_config, create_tables
 import asyncio
 import os
 from aiohttp import web
 from aiohttp.web import Request, Response
 import json
-from db import create_tables
-create_tables()
-from handlers.phrases import phrase_middleware
 
-# In your main bot setup
-application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, phrase_middleware))
+# Crear tablas en el inicio
+create_tables()
+
 # CONFIGURACIÓN CRÍTICA: Chat principal para jobs automáticos
 MAIN_CHAT_ID = os.environ.get("MAIN_CHAT_ID")  # Configurar en variables de entorno
 if not MAIN_CHAT_ID:
@@ -98,7 +96,8 @@ async def cmd_configurar_chat(update, context):
             f"✅ Chat configurado correctamente\n"
             f"📱 ID: `{chat_id}`\n"
             f"📝 Título: {chat_title}\n"
-            f"🔄 Recibirá rankings y retos automáticos"
+            f"🔄 Recibirá rankings y retos automáticos",
+            parse_mode='Markdown'
         )
         print(f"[INFO] Chat {chat_id} configurado manualmente")
     except Exception as e:
@@ -124,7 +123,8 @@ async def cmd_test_job(update, context):
         await update.message.reply_text(
             "🧪 Comandos de prueba:\n"
             "`/testjob ranking` - Ejecutar ranking manual\n"
-            "`/testjob reto` - Ejecutar reto manual"
+            "`/testjob reto` - Ejecutar reto manual",
+            parse_mode='Markdown'
         )
 
 async def setup_bot():
@@ -139,6 +139,8 @@ async def setup_bot():
     bot_app.add_handler(CommandHandler("ranking", cmd_ranking))
     bot_app.add_handler(CommandHandler("reto", cmd_reto))
     bot_app.add_handler(CommandHandler("mipuntaje", cmd_mipuntaje))
+    bot_app.add_handler(CommandHandler("miperfil", cmd_miperfil))
+    bot_app.add_handler(CommandHandler("mirank", cmd_mirank))
     
     # COMANDOS ADMIN
     bot_app.add_handler(CommandHandler("configurarchat", cmd_configurar_chat))
