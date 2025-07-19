@@ -15,6 +15,8 @@ import os
 from aiohttp import web
 from aiohttp.web import Request, Response
 import json
+from db import create_tables
+create_tables()
 
 # CONFIGURACIÓN CRÍTICA: Chat principal para jobs automáticos
 MAIN_CHAT_ID = os.environ.get("MAIN_CHAT_ID")  # Configurar en variables de entorno
