@@ -117,3 +117,17 @@ def get_user_stats(user_id: int):
         "weekly_challenge_done": weekly_done,
         "achievements": achievements
     }
+
+def get_top10():
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT username, SUM(points) as total
+        FROM points
+        GROUP BY user_id
+        ORDER BY total DESC
+        LIMIT 10
+    """)
+    result = cursor.fetchall()
+    conn.close()
+    return result
