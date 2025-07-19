@@ -1,7 +1,7 @@
 from telegram import Update
 from telegram.ext import ContextTypes
-from db import get_current_challenge, set_challenge, get_chat_config, set_chat_config
-import json
+from db import get_current_challenge, set_challenge, clear_challenge
+import os
 from datetime import datetime
 
 # Retos predefinidos con validaciones string-based
@@ -101,17 +101,17 @@ async def cmd_reto(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(mensaje, parse_mode='Markdown')
         
     except Exception as e:
-        print(f"Error en cmd_reto: {e}")
+        print(f"[ERROR] Error en cmd_reto: {e}")
         await update.message.reply_text("❌ Error al obtener el reto actual. Inténtalo más tarde.")
 
-async def reto_job(context: ContextTypes.DEFAULT_TYPE):
+async def reto_job(context):
     """Job que se ejecuta semanalmente para anunciar el nuevo reto"""
     try:
-        # Obtener chat_id configurado para anuncios
-        chat_configs = get_chat_config()
+        # Obtener chat_id desde job_data
+        chat_id = context.job.data if hasattr(context.job, 'data') and context.job.data else None
         
-        if not chat_configs:
-            print("[WARNING] No hay chats configurados para retos automáticos")
+        if not chat_id:
+            print("[ERROR] No hay chat_id configurado para reto automático")
             return
         
         # Obtener reto de la semana
@@ -128,60 +128,64 @@ async def reto_job(context: ContextTypes.DEFAULT_TYPE):
             f"Usa `/reto` para ver los detalles cuando quieras."
         )
         
-        # Enviar a todos los chats configurados
-        for chat_id in chat_configs:
-            try:
-                await context.bot.send_message(
-                    chat_id=chat_id,
-                    text=mensaje,
-                    parse_mode='Markdown'
-                )
-                print(f"[INFO] Reto semanal enviado a chat {chat_id}")
-            except Exception as e:
-                print(f"[ERROR] No se pudo enviar reto a chat {chat_id}: {e}")
+        # Enviar al chat configurado
+        try:
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text=mensaje,
+                parse_mode='Markdown'
+            )
+            print(f"[INFO] Reto semanal enviado a chat {chat_id}")
+        except Exception as e:
+            print(f"[ERROR] No se pudo enviar reto a chat {chat_id}: {e}")
                 
     except Exception as e:
         print(f"[ERROR] Error en reto_job: {e}")
 
-# Función para administradores: establecer reto personalizado
 async def cmd_nuevo_reto(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Comando para que administradores establezcan retos personalizados"""
-    # IDs de administradores (deberías configurar esto)
-    ADMIN_IDS = [123456789]  # Reemplazar con IDs reales
+    # IDs de administradores desde variables de entorno
+    ADMIN_IDS = [int(x) for x in os.environ.get("ADMIN_IDS", "").split(",") if x.strip()]
     
-    if update.effective_user.id not in ADMIN_IDS:
+    if not ADMIN_IDS or update.effective_user.id not in ADMIN_IDS:
         await update.message.reply_text("❌ Solo administradores pueden usar este comando")
         return
     
     if not context.args:
         await update.message.reply_text(
-            "❌ Uso: `/nuevoreto <descripción del reto>`\n"
-            "Ejemplo: `/nuevoreto Recomienda una película de Akira Kurosawa`"
+            "❌ **Uso:** `/nuevoreto <descripción del reto>`\n\n"
+            "**Ejemplo:**\n"
+            "`/nuevoreto Recomienda una película de Akira Kurosawa`\n\n"
+            "**Para limpiar reto actual:**\n"
+            "`/nuevoreto limpiar`",
+            parse_mode='Markdown'
         )
         return
     
     reto_text = " ".join(context.args)
+    
+    # Comando especial para limpiar
+    if reto_text.lower() == "limpiar":
+        try:
+            clear_challenge()
+            await update.message.reply_text("✅ **Reto personalizado eliminado**\nAhora se usarán los retos semanales automáticos")
+            return
+        except Exception as e:
+            print(f"[ERROR] Error limpiando reto: {e}")
+            await update.message.reply_text("❌ Error al limpiar el reto")
+            return
     
     try:
         set_challenge(reto_text)
         await update.message.reply_text(
             f"✅ **Nuevo reto establecido:**\n\n"
             f"📽️ {reto_text}\n\n"
-            f"Los usuarios pueden verlo con `/reto`"
+            f"Los usuarios pueden verlo con `/reto`",
+            parse_mode='Markdown'
         )
         
-        # Opcional: Anunciar inmediatamente
-        mensaje_anuncio = (
-            f"🚨 **¡RETO ESPECIAL ESTABLECIDO!** 🚨\n\n"
-            f"📽️ {reto_text}\n\n"
-            f"💰 **Recompensa**: Puntos adicionales\n"
-            f"🏷️ **Usa cualquier hashtag válido**\n\n"
-            f"¡Participa ahora! 🎬"
-        )
-        
-        # Aquí podrías enviarlo a todos los chats si quieres
-        # await context.bot.send_message(chat_id=MAIN_CHAT_ID, text=mensaje_anuncio)
+        print(f"[INFO] Reto personalizado establecido por admin {update.effective_user.id}")
         
     except Exception as e:
-        print(f"Error en cmd_nuevo_reto: {e}")
+        print(f"[ERROR] Error en cmd_nuevo_reto: {e}")
         await update.message.reply_text("❌ Error al establecer el reto")
