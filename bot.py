@@ -10,8 +10,12 @@ from utils import cmd_mipuntaje
 import asyncio
 import os
 
+async def post_init(application):
+    application.job_queue.run_repeating(ranking_job, interval=604800, first=0)
+    application.job_queue.run_repeating(reto_job, interval=604800, first=0)
+
 async def main():
-    app = ApplicationBuilder().token(os.environ["BOT_TOKEN"]).build()
+    app = ApplicationBuilder().token(os.environ["BOT_TOKEN"]).post_init(post_init).build()
 
     app.add_handler(MessageHandler(filters.ALL, phrase_middleware), group=0)
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_hashtags))
@@ -19,9 +23,6 @@ async def main():
     app.add_handler(CommandHandler("ranking", cmd_ranking))
     app.add_handler(CommandHandler("reto", cmd_reto))
     app.add_handler(CommandHandler("mipuntaje", cmd_mipuntaje))
-
-    app.job_queue.run_repeating(ranking_job, interval=604800, first=0)
-    app.job_queue.run_repeating(reto_job, interval=604800, first=0)
 
     await app.run_polling()
 

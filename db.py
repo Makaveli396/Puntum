@@ -25,4 +25,4 @@ def get_top10():
     cur.execute("SELECT username, points FROM users ORDER BY points DESC LIMIT 10")
     return cur.fetchall()
 
-def set_challenge(text): pass  # opcional
+def set_challenge(text): pass
