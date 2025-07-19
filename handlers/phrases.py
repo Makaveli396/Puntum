@@ -6,7 +6,7 @@ async def phrase_middleware(update: Update, context):
         return
     
     text = update.message.text.lower()
-    print(f"[DEBUG] Mensaje recibido: {update.message.text}")
+    print(f"[DEBUG] phrase_middleware: {update.message.text}")
     
     # Solo responder si contiene "cine"
     if "cine" in text:
