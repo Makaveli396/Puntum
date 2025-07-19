@@ -17,7 +17,10 @@ from aiohttp.web import Request, Response
 import json
 from db import create_tables
 create_tables()
+from handlers.phrases import phrase_middleware
 
+# In your main bot setup
+application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, phrase_middleware))
 # CONFIGURACIÓN CRÍTICA: Chat principal para jobs automáticos
 MAIN_CHAT_ID = os.environ.get("MAIN_CHAT_ID")  # Configurar en variables de entorno
 if not MAIN_CHAT_ID:
