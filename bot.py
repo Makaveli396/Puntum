@@ -1,7 +1,7 @@
 from telegram.ext import (
     ApplicationBuilder, CommandHandler, MessageHandler, filters
 )
-from handlers.hashtags import handle_hashtags
+from handlers.security import handle_hashtags_improved as handle_hashtags
 from handlers.ranking import ranking_job, cmd_ranking
 from handlers.retos import reto_job, cmd_reto, cmd_nuevo_reto
 from handlers.spam import spam_handler
