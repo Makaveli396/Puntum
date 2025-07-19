@@ -1,8 +1,8 @@
 from telegram.ext import (
     ApplicationBuilder, CommandHandler, MessageHandler, filters
 )
-# CORRECCIÓN: Cambiar el import para usar el nombre correcto de la función
-from handlers.security import handle_hashtags  # Era handle_hashtags_improved
+# CORRECCIÓN: Usar el nombre correcto de la función
+from handlers.security import handle_hashtags_improved as handle_hashtags  # Importar con alias
 from handlers.ranking import ranking_job, cmd_ranking
 from handlers.retos import reto_job, cmd_reto, cmd_nuevo_reto
 from handlers.spam import spam_handler
@@ -170,7 +170,7 @@ async def setup_bot():
     bot_app.add_handler(CommandHandler("testjob", cmd_test_job))
     
     # HANDLERS DE MENSAJES (en orden de prioridad)
-    # Group 0: Hashtags (MÁS IMPORTANTE) - CORRECCIÓN AQUÍ
+    # Group 0: Hashtags (MÁS IMPORTANTE) - AHORA USA LA FUNCIÓN CORRECTA
     bot_app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_hashtags), group=0)
     
     # Group 1: Detección de spam
