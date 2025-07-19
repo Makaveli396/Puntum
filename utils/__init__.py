@@ -1,12 +1,28 @@
 
 from telegram import Update
 from telegram.ext import ContextTypes
-from db import get_user_points, get_user_level, get_user_stats
+from db import get_user_stats
+
+def get_user_level(points):
+    if points < 50:
+        return "🎞️ Novato"
+    elif points < 150:
+        return "🍿 Cinéfilo"
+    elif points < 300:
+        return "🎬 Crítico"
+    else:
+        return "🏆 Leyenda del Cine"
 
 async def cmd_mipuntaje(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     username = update.effective_user.username or update.effective_user.first_name
-    points = get_user_points(user_id)
+    stats = get_user_stats(user_id)
+
+    if not stats:
+        await update.message.reply_text("❌ Aún no tienes puntos.")
+        return
+
+    points = stats.get("points", 0)
     level = get_user_level(points)
 
     await update.message.reply_text(
@@ -25,7 +41,7 @@ async def cmd_miperfil(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         f"🎭 Perfil de {update.effective_user.first_name}:\n"
         f"- Puntos: {stats['points']}\n"
-        f"- Nivel: {stats['level']}\n"
+        f"- Nivel: {get_user_level(stats['points'])}\n"
         f"- Hashtags usados: {stats['hashtags']}\n"
         f"- Días activo: {stats['active_days']}"
     )
