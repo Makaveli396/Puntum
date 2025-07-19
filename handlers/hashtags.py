@@ -102,7 +102,6 @@ async def handle_hashtags(update: Update, context):
         if warnings:
             response += "\n".join(warnings)
 
-        # Reto semanal
         try:
             challenge_text = get_current_challenge()
             current_challenge = get_weekly_challenge()
@@ -125,7 +124,6 @@ async def handle_hashtags(update: Update, context):
         except Exception as e:
             print(f"[ERROR] Validando reto semanal: {e}")
 
-        # Reto diario
         try:
             daily = get_today_challenge()
             cumple = False
@@ -159,7 +157,6 @@ async def handle_hashtags(update: Update, context):
 
         await update.message.reply_text(response.strip())
 
-    # Antispam general
     spam_words = ["gratis", "oferta", "descuento", "promoción", "gana dinero", "click aquí"]
     if any(spam_word in text.lower() for spam_word in spam_words):
         await update.message.reply_text("🛑 ¡Cuidado con el spam! Esto es un grupo de cine, no de ofertas.")
