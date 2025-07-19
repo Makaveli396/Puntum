@@ -1,191 +1,162 @@
 from telegram import Update
-from telegram.ext import ContextTypes
-from db import get_current_challenge, set_challenge, clear_challenge
-import os
-from datetime import datetime
+from db import add_points
+from handlers.retos import get_weekly_challenge, validate_challenge_submission, get_current_challenge
+from handlers.retos_diarios import get_today_challenge
+from handlers.phrases import get_random_reaction
+import re
 
-# Retos predefinidos con validaciones string-based
-WEEKLY_CHALLENGES = [
-    {
-        "id": 1,
-        "title": "Documental Latinoamericano",
-        "description": "Recomienda un documental latinoamericano anterior al año 2000",
-        "hashtag": "#recomendación",
-        "bonus_points": 10,
-        "validation_keywords": ["argentina", "méxico", "brasil", "chile", "colombia", "perú", "venezuela", "bolivia", "ecuador", "uruguay", "paraguay"],
-        "validation_type": "country_keywords"
-    },
-    {
-        "id": 2,
-        "title": "Cine de Terror Clásico",
-        "description": "Reseña una película de terror de los años 70-80",
-        "hashtag": "#reseña",
-        "bonus_points": 15,
-        "validation_keywords": ["70", "80", "1970", "1980", "terror", "horror"],
-        "validation_type": "decade_genre"
-    },
-    {
-        "id": 3,
-        "title": "Director Europeo",
-        "description": "Crítica de una película de directores europeos icónicos",
-        "hashtag": "#crítica",
-        "bonus_points": 12,
-        "validation_keywords": ["bergman", "fellini", "tarkovsky", "godard", "truffaut", "antonioni", "buñuel"],
-        "validation_type": "director_keywords"
-    },
-    {
-        "id": 4,
-        "title": "Cine Independiente",
-        "description": "Aporta información sobre cine independiente o bajo presupuesto",
-        "hashtag": "#aporte",
-        "bonus_points": 8,
-        "validation_keywords": ["independiente", "indie", "bajo presupuesto", "experimental"],
-        "validation_type": "genre_keywords"
-    }
-]
+POINTS = {
+    "#aporte": 3,
+    "#recomendación": 5,
+    "#reseña": 7,
+    "#crítica": 10,
+    "#debate": 4,
+    "#pregunta": 2,
+    "#spoiler": 1,
+}
 
-def get_weekly_challenge():
-    """Obtiene el reto de la semana basado en número de semana del año"""
-    week_number = datetime.now().isocalendar()[1]
-    challenge_index = (week_number - 1) % len(WEEKLY_CHALLENGES)
-    return WEEKLY_CHALLENGES[challenge_index]
+user_hashtag_cache = {}
 
-def validate_challenge_submission(challenge, text):
-    """Valida si un mensaje cumple con los requisitos del reto"""
-    text_lower = text.lower()
-    
-    if challenge["validation_type"] == "country_keywords":
-        return any(keyword in text_lower for keyword in challenge["validation_keywords"])
-    
-    elif challenge["validation_type"] == "decade_genre":
-        has_decade = any(decade in text_lower for decade in ["70", "80", "1970", "1980"])
-        has_genre = any(genre in text_lower for genre in ["terror", "horror"])
-        return has_decade or has_genre
-    
-    elif challenge["validation_type"] == "director_keywords":
-        return any(director in text_lower for director in challenge["validation_keywords"])
-    
-    elif challenge["validation_type"] == "genre_keywords":
-        return any(keyword in text_lower for keyword in challenge["validation_keywords"])
-    
+def count_words(text):
+    text_without_hashtags = re.sub(r'#\w+', '', text)
+    return len(text_without_hashtags.split())
+
+def is_spam(user_id, hashtag):
+    import time
+    current_time = time.time()
+
+    if user_id not in user_hashtag_cache:
+        user_hashtag_cache[user_id] = {}
+
+    user_data = user_hashtag_cache[user_id]
+
+    if hashtag in user_data:
+        if current_time - user_data.get("last_time", 0) < 300:
+            user_data[hashtag] = user_data.get(hashtag, 0) + 1
+            if user_data[hashtag] > 3:
+                return True
+        else:
+            user_data[hashtag] = 1
+    else:
+        user_data[hashtag] = 1
+
+    user_data["last_time"] = current_time
     return False
 
-async def cmd_reto(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Muestra el reto actual de la semana"""
-    try:
-        # Intentar obtener reto personalizado de la DB
-        current_challenge = get_current_challenge()
-        
-        if current_challenge:
-            # Reto personalizado desde DB
-            mensaje = (
-                f"🎯 **Reto Especial**\n\n"
-                f"📽️ {current_challenge}\n\n"
-                f"💰 **Recompensa**: Puntos adicionales según hashtag utilizado\n"
-                f"⏰ **Válido**: Hasta que se establezca un nuevo reto\n\n"
-                f"¡Participa y demuestra tu conocimiento cinéfilo!"
-            )
-        else:
-            # Reto automático semanal
-            challenge = get_weekly_challenge()
-            mensaje = (
-                f"🎯 **Reto de la Semana #{datetime.now().isocalendar()[1]}**\n\n"
-                f"📽️ **{challenge['title']}**\n"
-                f"{challenge['description']}\n\n"
-                f"💰 **Recompensa**: +{challenge['bonus_points']} puntos adicionales\n"
-                f"🏷️ **Usa el hashtag**: {challenge['hashtag']}\n"
-                f"⏰ **Válido hasta**: Próximo lunes\n\n"
-                f"💡 *Tip: El bot validará automáticamente tu participación*"
-            )
-        
-        await update.message.reply_text(mensaje, parse_mode='Markdown')
-        
-    except Exception as e:
-        print(f"[ERROR] Error en cmd_reto: {e}")
-        await update.message.reply_text("❌ Error al obtener el reto actual. Inténtalo más tarde.")
+async def handle_hashtags(update: Update, context):
+    text = update.message.text if update.message and update.message.text else ""
+    user = update.effective_user
+    points = 0
+    found_tags = []
+    warnings = []
+    response = ""
 
-async def reto_job(context):
-    """Job que se ejecuta semanalmente para anunciar el nuevo reto"""
-    try:
-        # Obtener chat_id desde job_data
-        chat_id = context.job.data if hasattr(context.job, 'data') and context.job.data else None
-        
-        if not chat_id:
-            print("[ERROR] No hay chat_id configurado para reto automático")
-            return
-        
-        # Obtener reto de la semana
-        challenge = get_weekly_challenge()
-        
-        mensaje = (
-            f"🚨 **¡NUEVO RETO SEMANAL!** 🚨\n\n"
-            f"📽️ **{challenge['title']}**\n"
-            f"{challenge['description']}\n\n"
-            f"💰 **Recompensa**: +{challenge['bonus_points']} puntos adicionales\n"
-            f"🏷️ **Hashtag requerido**: {challenge['hashtag']}\n"
-            f"⏰ **Plazo**: 7 días desde ahora\n\n"
-            f"¡A demostrar sus conocimientos cinéfilos! 🎬\n"
-            f"Usa `/reto` para ver los detalles cuando quieras."
-        )
-        
-        # Enviar al chat configurado
-        try:
-            await context.bot.send_message(
-                chat_id=chat_id,
-                text=mensaje,
-                parse_mode='Markdown'
-            )
-            print(f"[INFO] Reto semanal enviado a chat {chat_id}")
-        except Exception as e:
-            print(f"[ERROR] No se pudo enviar reto a chat {chat_id}: {e}")
-                
-    except Exception as e:
-        print(f"[ERROR] Error en reto_job: {e}")
+    print(f"[DEBUG] handle_hashtags: {text}")
 
-async def cmd_nuevo_reto(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Comando para que administradores establezcan retos personalizados"""
-    # IDs de administradores desde variables de entorno
-    ADMIN_IDS = [int(x) for x in os.environ.get("ADMIN_IDS", "").split(",") if x.strip()]
-    
-    if not ADMIN_IDS or update.effective_user.id not in ADMIN_IDS:
-        await update.message.reply_text("❌ Solo administradores pueden usar este comando")
-        return
-    
-    if not context.args:
-        await update.message.reply_text(
-            "❌ **Uso:** `/nuevoreto <descripción del reto>`\n\n"
-            "**Ejemplo:**\n"
-            "`/nuevoreto Recomienda una película de Akira Kurosawa`\n\n"
-            "**Para limpiar reto actual:**\n"
-            "`/nuevoreto limpiar`",
-            parse_mode='Markdown'
+    for tag, value in POINTS.items():
+        if tag in text.lower():
+            if is_spam(user.id, tag):
+                warnings.append(f"⚠️ {tag}: Detectado spam. Usa hashtags con moderación.")
+                continue
+
+            if tag == "#reseña":
+                word_count = count_words(text)
+                if word_count < 50:
+                    warnings.append(f"❌ {tag}: Necesitas mínimo 50 palabras. Tienes {word_count}.")
+                    continue
+
+            elif tag == "#crítica":
+                word_count = count_words(text)
+                if word_count < 100:
+                    warnings.append(f"❌ {tag}: Necesitas mínimo 100 palabras. Tienes {word_count}.")
+                    continue
+
+            elif tag == "#recomendación":
+                has_pattern = bool(re.search(r'[A-Za-z\s]+,\s*[A-Za-z\s]+,\s*\d{4}', text))
+                if not has_pattern:
+                    warnings.append(f"💡 {tag}: Incluye formato 'Título, País, Año' para más puntos.")
+                    value = 3
+
+            points += value
+            found_tags.append(f"{tag} (+{value})")
+
+    if points > 0 or warnings:
+        result = add_points(
+            user.id,
+            user.username,
+            points,
+            hashtag=None,
+            message_text=text,
+            chat_id=update.effective_chat.id,
+            message_id=update.message.message_id,
+            is_challenge_bonus=False,
+            context=context
         )
-        return
-    
-    reto_text = " ".join(context.args)
-    
-    # Comando especial para limpiar
-    if reto_text.lower() == "limpiar":
+
+        if points > 0:
+            tags_text = ", ".join(found_tags)
+            tag_main = found_tags[0].split()[0] if found_tags else "default"
+            reaction = get_random_reaction(tag_main, user.id)
+            response += f"✅ +{points} puntos por: {tags_text}\n{reaction}\n"
+
+        if warnings:
+            response += "\n".join(warnings)
+
         try:
-            clear_challenge()
-            await update.message.reply_text("✅ **Reto personalizado eliminado**\nAhora se usarán los retos semanales automáticos")
-            return
+            challenge_text = get_current_challenge()
+            current_challenge = get_weekly_challenge()
+            if not challenge_text:
+                if current_challenge["hashtag"] in text.lower():
+                    if validate_challenge_submission(current_challenge, text):
+                        bonus = current_challenge["bonus_points"]
+                        bonus_result = add_points(
+                            user.id,
+                            user.username,
+                            bonus,
+                            hashtag=current_challenge["hashtag"],
+                            message_text=text,
+                            chat_id=update.effective_chat.id,
+                            message_id=update.message.message_id,
+                            is_challenge_bonus=True,
+                            context=context
+                        )
+                        response += f"\n🎯 ¡Cumpliste el reto semanal! Bonus: +{bonus} puntos 🎉"
         except Exception as e:
-            print(f"[ERROR] Error limpiando reto: {e}")
-            await update.message.reply_text("❌ Error al limpiar el reto")
-            return
-    
-    try:
-        set_challenge(reto_text)
-        await update.message.reply_text(
-            f"✅ **Nuevo reto establecido:**\n\n"
-            f"📽️ {reto_text}\n\n"
-            f"Los usuarios pueden verlo con `/reto`",
-            parse_mode='Markdown'
-        )
-        
-        print(f"[INFO] Reto personalizado establecido por admin {update.effective_user.id}")
-        
-    except Exception as e:
-        print(f"[ERROR] Error en cmd_nuevo_reto: {e}")
-        await update.message.reply_text("❌ Error al establecer el reto")
+            print(f"[ERROR] Validando reto semanal: {e}")
+
+        try:
+            daily = get_today_challenge()
+            cumple = False
+
+            if "hashtag" in daily and daily["hashtag"] in text.lower():
+                cumple = True
+            elif "keywords" in daily:
+                cumple = any(word in text.lower() for word in daily["keywords"])
+
+            if cumple and "min_words" in daily:
+                word_count = count_words(text)
+                if word_count < daily["min_words"]:
+                    cumple = False
+
+            if cumple:
+                daily_bonus = daily["bonus_points"]
+                bonus_result = add_points(
+                    user.id,
+                    user.username,
+                    daily_bonus,
+                    hashtag="(reto_diario)",
+                    message_text=text,
+                    chat_id=update.effective_chat.id,
+                    message_id=update.message.message_id,
+                    is_challenge_bonus=True,
+                    context=context
+                )
+                response += f"\n🎯 ¡Cumpliste el reto diario! Bonus: +{daily_bonus} puntos 🎉"
+        except Exception as e:
+            print(f"[ERROR] Validando reto diario: {e}")
+
+        await update.message.reply_text(response.strip())
+
+    spam_words = ["gratis", "oferta", "descuento", "promoción", "gana dinero", "click aquí"]
+    if any(spam_word in text.lower() for spam_word in spam_words):
+        await update.message.reply_text("🛑 ¡Cuidado con el spam! Esto es un grupo de cine, no de ofertas.")
