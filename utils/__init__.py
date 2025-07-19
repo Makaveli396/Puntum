@@ -1,17 +1,39 @@
-from datetime import datetime
 
-def get_today_challenge():
-    # Reto diario por día de la semana
-    weekday = datetime.now().weekday()
+from telegram import Update
+from telegram.ext import ContextTypes
+from db import get_user_points, get_user_level, get_user_stats
 
-    retos = [
-        {"keywords": ["terror", "miedo"], "bonus_points": 5},
-        {"hashtag": "#recomendación", "bonus_points": 4, "min_words": 30},
-        {"keywords": ["Oscar", "ganadora"], "bonus_points": 6},
-        {"hashtag": "#reseña", "bonus_points": 7, "min_words": 50},
-        {"keywords": ["animación", "dibujos"], "bonus_points": 5},
-        {"keywords": ["blanco y negro"], "bonus_points": 5},
-        {"hashtag": "#debate", "bonus_points": 6, "min_words": 20}
-    ]
+async def cmd_mipuntaje(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    username = update.effective_user.username or update.effective_user.first_name
+    points = get_user_points(user_id)
+    level = get_user_level(points)
 
-    return retos[weekday % len(retos)]
+    await update.message.reply_text(
+        f"🎟️ {username}, tienes {points} puntos.\n"
+        f"🌟 Nivel actual: {level}"
+    )
+
+async def cmd_miperfil(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    stats = get_user_stats(user_id)
+
+    if not stats:
+        await update.message.reply_text("❌ No tienes actividad registrada.")
+        return
+
+    await update.message.reply_text(
+        f"🎭 Perfil de {update.effective_user.first_name}:\n"
+        f"- Puntos: {stats['points']}\n"
+        f"- Nivel: {stats['level']}\n"
+        f"- Hashtags usados: {stats['hashtags']}\n"
+        f"- Días activo: {stats['active_days']}"
+    )
+
+async def cmd_mirank(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    rank = get_user_stats(user_id).get("rank", "No disponible")
+
+    await update.message.reply_text(
+        f"📈 Estás en la posición #{rank} del ranking."
+    )
