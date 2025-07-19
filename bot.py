@@ -7,6 +7,7 @@ from handlers.retos import reto_job, cmd_reto
 from handlers.spam import spam_handler
 from handlers.phrases import phrase_middleware
 from utils import cmd_mipuntaje
+from handlers.help import cmd_help
 import asyncio
 import os
 
@@ -23,13 +24,15 @@ async def main():
     app.add_handler(CommandHandler("ranking", cmd_ranking))
     app.add_handler(CommandHandler("reto", cmd_reto))
     app.add_handler(CommandHandler("mipuntaje", cmd_mipuntaje))
+    app.add_handler(CommandHandler("help", cmd_help))
 
     await app.initialize()
     await app.start()
 
+    # Webhook explícito + log
     webhook_url = os.environ["RENDER_EXTERNAL_URL"]
-    result = await app.bot.set_webhook(url=webhook_url)
-    print(f"[DEBUG] Webhook set to: {webhook_url} => {result}")
+    await app.bot.set_webhook(url=webhook_url)
+    print(f"[DEBUG] Webhook set to: {webhook_url}")
 
     await asyncio.Event().wait()
 
