@@ -1,6 +1,7 @@
 from telegram import Update
-from db import add_points, get_current_challenge
-from handlers.retos import get_weekly_challenge, validate_challenge_submission
+from db import add_points
+from handlers.retos import get_weekly_challenge, validate_challenge_submission, get_current_challenge
+from handlers.retos_diarios import get_today_challenge
 from handlers.phrases import get_random_reaction
 import re
 
@@ -80,7 +81,17 @@ async def handle_hashtags(update: Update, context):
             found_tags.append(f"{tag} (+{value})")
 
     if points > 0 or warnings:
-        result = add_points(user.id, user.username, points)
+        result = add_points(
+            user.id,
+            user.username,
+            points,
+            hashtag=None,
+            message_text=text,
+            chat_id=update.effective_chat.id,
+            message_id=update.message.message_id,
+            is_challenge_bonus=False,
+            context=context
+        )
 
         if points > 0:
             tags_text = ", ".join(found_tags)
@@ -91,11 +102,10 @@ async def handle_hashtags(update: Update, context):
         if warnings:
             response += "\n".join(warnings)
 
-        # Validación reto semanal
+        # Reto semanal
         try:
             challenge_text = get_current_challenge()
             current_challenge = get_weekly_challenge()
-
             if not challenge_text:
                 if current_challenge["hashtag"] in text.lower():
                     if validate_challenge_submission(current_challenge, text):
@@ -108,22 +118,14 @@ async def handle_hashtags(update: Update, context):
                             message_text=text,
                             chat_id=update.effective_chat.id,
                             message_id=update.message.message_id,
-                            is_challenge_bonus=True
+                            is_challenge_bonus=True,
+                            context=context
                         )
                         response += f"\n🎯 ¡Cumpliste el reto semanal! Bonus: +{bonus} puntos 🎉"
-
-                        if bonus_result and bonus_result.get("level_change", {}).get("leveled_up"):
-                            level_info = bonus_result["level_change"]
-                            response += (
-                                f"\n\n🆙 ¡Felicidades, subiste a nivel {level_info['new_level']}!\n"
-                                f"Ahora eres *{level_info['level_name']}* 🎉"
-                            )
         except Exception as e:
             print(f"[ERROR] Validando reto semanal: {e}")
 
-        # Validación reto diario
-        from handlers.retos_diarios import get_today_challenge
-
+        # Reto diario
         try:
             daily = get_today_challenge()
             cumple = False
@@ -132,14 +134,11 @@ async def handle_hashtags(update: Update, context):
                 cumple = True
             elif "keywords" in daily:
                 cumple = any(word in text.lower() for word in daily["keywords"])
-                if not cumple:
-                    print("[INFO] No contiene keywords del reto diario")
 
             if cumple and "min_words" in daily:
                 word_count = count_words(text)
                 if word_count < daily["min_words"]:
                     cumple = False
-                    print(f"[INFO] No cumple palabras mínimas ({word_count} / {daily['min_words']})")
 
             if cumple:
                 daily_bonus = daily["bonus_points"]
@@ -151,22 +150,16 @@ async def handle_hashtags(update: Update, context):
                     message_text=text,
                     chat_id=update.effective_chat.id,
                     message_id=update.message.message_id,
-                    is_challenge_bonus=True
+                    is_challenge_bonus=True,
+                    context=context
                 )
                 response += f"\n🎯 ¡Cumpliste el reto diario! Bonus: +{daily_bonus} puntos 🎉"
-
-                if bonus_result and bonus_result.get("level_change", {}).get("leveled_up"):
-                    level_info = bonus_result["level_change"]
-                    response += (
-                        f"\n\n🆙 ¡Felicidades, subiste a nivel {level_info['new_level']}!\n"
-                        f"Ahora eres *{level_info['level_name']}* 🎉"
-                    )
         except Exception as e:
             print(f"[ERROR] Validando reto diario: {e}")
 
         await update.message.reply_text(response.strip())
 
+    # Antispam general
     spam_words = ["gratis", "oferta", "descuento", "promoción", "gana dinero", "click aquí"]
     if any(spam_word in text.lower() for spam_word in spam_words):
         await update.message.reply_text("🛑 ¡Cuidado con el spam! Esto es un grupo de cine, no de ofertas.")
-
