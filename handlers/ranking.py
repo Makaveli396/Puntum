@@ -22,25 +22,55 @@ CLOSING_PHRASES = [
 
 async def cmd_ranking(update: Update, context):
     """Comando manual para mostrar ranking actual"""
-    top = get_top10()
-    if not top:
-        await update.message.reply_text("📝 Aún no hay participantes. ¡Sé el primero en usar hashtags!")
-        return
+    print(f"[DEBUG] Comando /ranking ejecutado por {update.effective_user.first_name}")
+    print(f"[DEBUG] Chat ID: {update.effective_chat.id}")
     
-    msg = "🎬 **TOP 10 CINÉFILOS ACTUALES**\n\n"
-    
-    for i, (user, pts, level) in enumerate(top, 1):
-        if i == 1:
-            msg += f"🥇 {user} - {pts} pts\n"
-        elif i == 2:
-            msg += f"🥈 {user} - {pts} pts\n"
-        elif i == 3:
-            msg += f"🥉 {user} - {pts} pts\n"
-        else:
-            msg += f"🎭 {i}. {user} - {pts} pts\n"
-    
-    msg += f"\n📅 Próximo ranking oficial: {get_next_sunday()}"
-    await update.message.reply_text(msg)
+    try:
+        # Debug de la función get_top10
+        print("[DEBUG] Llamando a get_top10()...")
+        top = get_top10()
+        print(f"[DEBUG] Resultado de get_top10(): {top}")
+        print(f"[DEBUG] Tipo de dato: {type(top)}")
+        print(f"[DEBUG] Longitud: {len(top) if top else 'None'}")
+        
+        if not top:
+            print("[DEBUG] No hay datos - enviando mensaje de no participantes")
+            await update.message.reply_text("📝 Aún no hay participantes. ¡Sé el primero en usar hashtags!")
+            return
+        
+        print("[DEBUG] Construyendo mensaje del ranking...")
+        msg = "🎬 *TOP 10 CINÉFILOS ACTUALES*\n\n"
+        
+        for i, (user, pts, level) in enumerate(top, 1):
+            print(f"[DEBUG] Procesando posición {i}: {user} - {pts} pts")
+            if i == 1:
+                msg += f"🥇 {user} - {pts} pts\n"
+            elif i == 2:
+                msg += f"🥈 {user} - {pts} pts\n"
+            elif i == 3:
+                msg += f"🥉 {user} - {pts} pts\n"
+            else:
+                msg += f"🎭 {i}. {user} - {pts} pts\n"
+        
+        msg += f"\n📅 Próximo ranking oficial: {get_next_sunday()}"
+        
+        print(f"[DEBUG] Mensaje construido: {msg}")
+        print("[DEBUG] Enviando mensaje...")
+        
+        await update.message.reply_text(msg, parse_mode='Markdown')
+        print("[DEBUG] Mensaje enviado exitosamente")
+        
+    except Exception as e:
+        print(f"[ERROR] Error en cmd_ranking: {e}")
+        print(f"[ERROR] Tipo de error: {type(e)}")
+        import traceback
+        print(f"[ERROR] Traceback: {traceback.format_exc()}")
+        
+        # Enviar mensaje de error al usuario
+        await update.message.reply_text(
+            f"❌ Error al obtener el ranking: {str(e)}\n"
+            "Contacta al administrador si persiste el problema."
+        )
 
 async def ranking_job(context):
     """Job que se ejecuta automáticamente cada domingo a las 20:00"""
@@ -72,10 +102,10 @@ async def ranking_job(context):
             points=winner_points
         )
         
-        msg = f"🎬 **RANKING SEMANAL OFICIAL**\n"
+        msg = f"🎬 *RANKING SEMANAL OFICIAL*\n"
         msg += f"📅 Semana del {get_last_week_range()}\n\n"
         msg += f"{winner_phrase}\n\n"
-        msg += "🏆 **TOP 10 DE LA SEMANA:**\n\n"
+        msg += "🏆 *TOP 10 DE LA SEMANA:*\n\n"
         
         for i, (user, pts, level) in enumerate(top, 1):
             if i == 1:
@@ -89,7 +119,7 @@ async def ranking_job(context):
         
         msg += f"\n{random.choice(CLOSING_PHRASES)}"
         
-        await context.bot.send_message(chat_id=chat_id, text=msg)
+        await context.bot.send_message(chat_id=chat_id, text=msg, parse_mode='Markdown')
         print(f"[INFO] Ranking semanal enviado a chat {chat_id}")
         
         # Opcional: Reset de puntos semanales (descomentar si quieres ranking semanal real)
@@ -97,6 +127,8 @@ async def ranking_job(context):
         
     except Exception as e:
         print(f"[ERROR] en ranking_job: {e}")
+        import traceback
+        print(f"[ERROR] Traceback: {traceback.format_exc()}")
 
 def get_next_sunday():
     """Obtiene la fecha del próximo domingo"""
