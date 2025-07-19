@@ -12,12 +12,13 @@ POINTS = {
 }
 
 async def handle_hashtags(update: Update, context):
-    text = update.message.text.lower()
+    text = update.message.text if update.message and update.message.text else ""
     user = update.effective_user
     points = 0
 
     for tag, value in POINTS.items():
-        if tag in text:
+        if tag in text.lower():
             points += value
 
-    add_points(user.id, user.username, points)
+    if points > 0:
+        add_points(user.id, user.username, points)
