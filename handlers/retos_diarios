@@ -1,0 +1,68 @@
+from telegram import Update
+from telegram.ext import ContextTypes
+from datetime import datetime
+
+DAILY_CHALLENGES = {
+    0: {
+        "title": "Lunes de Directores",
+        "description": "Menciona una película de cualquier director europeo.",
+        "keywords": ["bergman", "fellini", "tarkovsky", "godard", "truffaut", "antonioni", "buñuel"],
+        "bonus_points": 5
+    },
+    1: {
+        "title": "Martes Mexicano",
+        "description": "Comparte o recomienda una película hecha en México.",
+        "keywords": ["mexico", "mexicana", "gael garcía", "cuarón", "del toro", "inemex", "cine mexicano"],
+        "bonus_points": 5
+    },
+    2: {
+        "title": "Miércoles de Reseña",
+        "description": "Escribe una reseña con al menos 50 palabras.",
+        "min_words": 50,
+        "hashtag": "#reseña",
+        "bonus_points": 5
+    },
+    3: {
+        "title": "Jueves de Cine Asiático",
+        "description": "Recomienda cine de Japón, Corea, China o alrededores.",
+        "keywords": ["japón", "corea", "china", "taiwán", "hong kong", "kim ki duk", "kurosawa", "park chan wook"],
+        "bonus_points": 5
+    },
+    4: {
+        "title": "Viernes Emocional",
+        "description": "Comparte una película que te haya hecho llorar.",
+        "keywords": ["lloré", "emotiva", "triste", "emocionante", "drama"],
+        "bonus_points": 5
+    },
+    5: {
+        "title": "Sábado de Crítica",
+        "description": "Publica una crítica afilada (100+ palabras).",
+        "min_words": 100,
+        "hashtag": "#crítica",
+        "bonus_points": 5
+    },
+    6: {
+        "title": "Domingo de Debate",
+        "description": "Abre una pregunta o debate sobre cine.",
+        "keywords": ["qué opinan", "ustedes creen", "por qué", "debería", "mejor director"],
+        "bonus_points": 5
+    }
+}
+
+def get_today_challenge():
+    return DAILY_CHALLENGES.get(datetime.now().weekday())
+
+async def cmd_retodiario(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    reto = get_today_challenge()
+    if not reto:
+        await update.message.reply_text("❌ No hay reto para hoy.")
+        return
+
+    msg = (
+        f"📅 *Reto Diario: {reto['title']}*\n\n"
+        f"🎬 {reto['description']}\n"
+        f"💰 Recompensa: +{reto['bonus_points']} puntos\n"
+        f"⏳ Solo hoy.\n\n"
+        f"Usa un hashtag como `#aporte`, `#reseña`, `#crítica` o `#recomendación` para participar."
+    )
+    await update.message.reply_text(msg, parse_mode="Markdown")
