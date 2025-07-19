@@ -262,11 +262,12 @@ def get_level_info(points: int) -> Dict:
     }
 
 def check_level_up(user_id: int, new_points: int) -> Optional[Dict]:
-    """Verifica si el usuario subió de nivel"""
+    """Verifica si el usuario subió de nivel - CORREGIDO"""
     try:
         # Obtener nivel anterior
         cur.execute("SELECT level FROM users WHERE id=?", (user_id,))
-        old_level = cur.fetchone()[0] if cur.fetchone() else 1
+        result = cur.fetchone()
+        old_level = result[0] if result else 1
         
         # Calcular nuevo nivel
         new_level_info = get_level_info(new_points)
